@@ -383,7 +383,7 @@ Nothing durable lives in the plugin cache (`~/.claude/plugins/cache/…`), which
 1. **Overview** — totals for selectable period; API-equivalent cost vs. subscription price; tokens by type (stacked); cache hit ratio; current plan windows with reset countdown.
 2. **Tokens over time** — stacked area/bar by token type; group by model, source, project; day/week/month buckets.
 3. **Cost over time** — API-equivalent cost at historical prices; marks where prices changed; unpriced banner.
-4. **Plan usage** — timeline of the current window, tabs for 5-hour (with the weekly curve) and weekly (weekly only), x-axis always the full window; sessions in the current window (same tabs), most expensive first; token/cost overlay; tokens-per-percent estimate (experimental).
+4. **Plan usage** — timeline of the current window, tabs for 5-hour (with the weekly curve) and weekly (weekly only), x-axis always the full window; sessions in the current window (same tabs), sortable by column, newest first by default; token/cost overlay; tokens-per-percent estimate (experimental).
 5. **Sessions** — list with source, project, title, model, duration, tokens, cost; detail page with per-request table, subagents and cache behaviour.
 6. **Models & projects** — breakdowns and trends.
 7. **Sources & status** — data sources, last scan, file counts, ingest errors, versions, price file version, local price editor.

@@ -167,7 +167,7 @@ function WindowSessions({ w }: { w: PlanWindow }) {
   if (!list.data.items.length) return <p className="muted empty">No sessions in this window.</p>;
   return (
     <>
-      <SessionTable items={list.data.items} />
+      <SessionTable items={list.data.items} sortable />
       <p className="muted note">
         Tokens and cost count only requests inside the window; duration is the whole session.
       </p>

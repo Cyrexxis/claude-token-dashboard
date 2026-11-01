@@ -208,6 +208,13 @@ button.primary {
   background: var(--surface);
   border-color: var(--border);
 }
+.th-sort {
+  font-weight: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
 .table-wrap {
   overflow-x: auto;
 }
