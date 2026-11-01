@@ -319,6 +319,8 @@ Rules:
 | `/token-dashboard open` | Open the dashboard URL in the default browser: `wslview` or `cmd.exe /c start` in WSL (`xdg-open` is often missing there), `xdg-open` on Linux, `cmd /c start` on Windows. The link is also printed as a fallback. |
 | `/token-dashboard uninstall` | Remove service and program; keep the database unless the user explicitly asks to delete it. |
 
+**Phase 4 (local):** until releases exist, `setup` / `update` / `uninstall` are server CLI commands run from the checkout (`bun run setup|update|uninstall`, WSL/Linux only). `setup` asks which connection files to write (WSL, Windows, both), builds the web UI, writes a systemd user unit running `<bun> <repo>/server/src/cli.ts serve` (copying `TD_PORT`, `TD_CONFIG`, `TD_DATA_DIR`, `CLAUDE_CONFIG_DIR` from the shell into it), starts it and waits for health; a busy port is an error (no fallback yet). `update` = `bun install` + web build + restart. `uninstall` removes the unit and the connection files, keeping the database and config. The mod commands, GitHub downloads, Windows-server mode and Task Scheduler are deferred to the release part of phase 4.
+
 Downloads and service management use `$.process.run` / `$.process.spawn` (`curl` on Linux/WSL, `curl.exe` or PowerShell on Windows). Progress is shown via `$.ui.status`. These commands work in Claude Code sessions (CLI, desktop Code tab, IDE); not in chat or Cowork.
 
 ### 11.3 Connection file
@@ -335,9 +337,12 @@ Linux/WSL: `~/.config/token-dashboard/server.json` · Windows: `%APPDATA%\token-
 
 `serve` writes `url` and `protocol` into this file at start-up, next to `config.json` (so `TD_CONFIG` moves it), keeping any other keys such as `start`. The mod finds it the same way (`TD_CONFIG`, else the platform folder). For a WSL server, setup (phase 4) also writes the Windows-side file (via `/mnt/c`) with `"start": ["wsl.exe", "-d", "<distro>", "--", "systemctl", "--user", "start", "token-dashboard"]`. Plugin `userConfig` can override `url` for unusual setups.
 
+**Decided in phase 4:** `setup` stores the chosen files as `connectionFiles` (absolute paths, the Windows one via `/mnt/c`) in `config.json`; `serve` refreshes `url` and `protocol` in every listed file at start-up, keeping `start` and `serverLocation`. Without the key, `serve` writes only the default file. "Windows only" writes no Linux file, so WSL sessions get the mod's one-time notice. Switching choices deletes files no longer chosen.
+
 ### 11.4 Service registration
 - **WSL / Linux:** systemd user unit `~/.config/systemd/user/token-dashboard.service` (`Restart=on-failure`), enabled and started via `systemctl --user`. Logs via `journalctl --user -u token-dashboard`.
 - **Windows:** Task Scheduler task "TokenDashboard", trigger at logon, no admin rights, hidden window, restart on failure.
+- **Lingering (phase 4):** not enabled. If the service does not come back after `wsl --shutdown` (check from Windows: `wsl -d <distro> -- systemctl --user is-active token-dashboard`), `setup` adds `loginctl enable-linger`.
 - **Open question:** WSL may stop the distro shortly after the last Windows-side process using it exits, even with systemd services running. If confirmed, setup also registers a hidden Windows logon task running `wsl.exe -d <distro> -- token-dashboard keepalive`. Data is never lost either way (transcripts are re-read later); only live availability is affected.
 
 ### 11.5 Implementation notes
@@ -367,7 +372,7 @@ Linux/WSL: `~/.config/token-dashboard/server.json` · Windows: `%APPDATA%\token-
 | Connection file | `~/.config/token-dashboard/server.json` | `%APPDATA%\token-dashboard\server.json` |
 | Logs | journald | `%LOCALAPPDATA%\token-dashboard\logs\` |
 
-`config.json` is optional: `extraRoots` (extra `.claude` folders), `pollIntervalMs` (default 5000, ≥ 100), `windowsRoots` (`"auto"` or `false`), `subscriptionMonthlyUsd` (shown against API-equivalent cost on the Overview; default none). `TD_CONFIG` points at another `config.json`; `prices.local.json` is then read from the same folder.
+`config.json` is optional: `extraRoots` (extra `.claude` folders), `pollIntervalMs` (default 5000, ≥ 100), `windowsRoots` (`"auto"` or `false`), `subscriptionMonthlyUsd` (shown against API-equivalent cost on the Overview; default none), `connectionFiles` (written by `setup`, §11.3). `TD_CONFIG` points at another `config.json`; `prices.local.json` is then read from the same folder.
 
 Nothing durable lives in the plugin cache (`~/.claude/plugins/cache/…`), which Claude Code replaces on updates and deletes 14 days later. Uninstalling the plugin does not delete history.
 
@@ -426,7 +431,7 @@ No built files are committed; no npm publishing.
 - **Daily development:** `bun run dev` starts Vite (UI with hot reload, `http://127.0.0.1:5173`) and the Bun server (`serve`); Vite proxies `/api` to the server and rewrites `Host` and `Origin` so the request guards (§10.2) pass. `bun run serve` alone serves the last `bun run build:web` output. The mod is loaded with `claude --plugin-dir ./plugin` (or `CLAUDE_CODE_PLUGIN_DIRS` for desktop sessions).
 - **Mod tests:** `claude plugin test ./plugin`.
 - **Server tests:** `bun test` with fixtures covering duplicate lines, resumed sessions, subagents, truncated files, unknown models, price period boundaries.
-- **Install-flow test:** `claude plugin marketplace add <repo folder>` with a dev marketplace name (`token-dashboard-dev`); remove afterwards.
+- **Install-flow test:** `claude plugin marketplace add <repo folder>` (the repo is a `directory` marketplace named `token-dashboard`; works since phase 3), then `bun run setup` for the server.
 - **Fresh-user test:** `CLAUDE_CONFIG_DIR=~/cc-sandbox claude`, install from GitHub, delete the folder afterwards.
 - **Isolation:** `TD_DATA_DIR`, `TD_CONFIG`, `TD_PORT`, service name `token-dashboard-dev`, and a configurable release download URL (pointing to a local build or a test release).
 
@@ -437,14 +442,14 @@ No built files are committed; no npm publishing.
 1. **Core** — scaffolding (Bun workspaces), schema + migrations, transcript parser + ingester with dedup, watchers/polling, price engine with `prices.json`, fixtures and tests. Examine `api-request` lines.
 2. **API + UI** — Hono API, auth, SSE, React dashboard (overview, tokens, cost, sessions, status).
 3. **Mod** — health/start, plan snapshots, ingest triggers, offline queue, `status` and `open` commands; Plan view, Overview plan tile, price and tokens per 1 % (moved up from phase 5). Not built: `POST /sessions`, `/live-usage`, `session.started/ended` events. Windows-side connection file stays in phase 4, so Windows sessions keep polling until then.
-4. **Distribution** — release workflow, `setup` / `update` / `uninstall`, systemd and Task Scheduler, connection files, Windows-server mode, WSL keepalive (if needed), retention setting.
+4. **Distribution** — *local part done:* server `setup` / `update` / `uninstall` from the checkout, systemd user unit, WSL + Windows connection files (`connectionFiles`). *Release part open:* release workflow, `setup` / `update` / `uninstall`, systemd and Task Scheduler, connection files, Windows-server mode, WSL keepalive (if needed), retention setting.
 5. **Extras** — Cowork parser (after verification), chat export import (estimates), optional in-app panel.
 
 ---
 
 ## 18. Open questions / to verify
 
-1. Does WSL shut down the distro (and the service) when no Windows-side process holds it? → keepalive task needed?
+1. Does WSL shut down the distro (and the service) when no Windows-side process holds it? → keepalive task needed? Not observed so far (phase 4). Also to verify: does the service come back after `wsl --shutdown` without lingering (§11.4)?
 2. Cowork: where are transcripts stored and do they contain usage?
 3. ~~Fields returned by `$.session.identity()`~~ **Resolved (phase 3):** `{kind, organizationId?, organizationType?, email?, isVerified}`, answered only to mods installed via managed settings; others get `{deny}`. Not used (single account).
 4. ~~Are thinking tokens included in `output_tokens`?~~ **Resolved (phase 1):** yes, included. `iterations[]` had a single entry equal to the top-level usage in all samples; stored raw in `usage_raw_json`, revisit if multi-entry ones appear.
