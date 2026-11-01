@@ -1,0 +1,481 @@
+{
+  "schema": 1,
+  "updated": "2026-11-01",
+  "currency": "USD",
+  "models": [
+    {
+      "id": "claude-fable-5-1",
+      "match": [
+        "claude-fable-5-1",
+        "claude-fable-5-1-*",
+        "claude-mythos-5-1",
+        "claude-mythos-5-1-*"
+      ],
+      "notes": "quoted",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 10,
+            "output": 50,
+            "cache_read": 0.25,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-fable-5",
+      "match": ["claude-fable-5", "claude-fable-5-2*", "claude-mythos-5", "claude-mythos-5-2*"],
+      "notes": "quoted",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 10,
+            "output": 50,
+            "cache_read": 1.0,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-5-5",
+      "match": ["claude-opus-5-5", "claude-opus-5-5-*"],
+      "notes": "quoted; 1h cache write verified against cost-state",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 4,
+            "output": 20,
+            "cache_read": 0.2,
+            "cache_write_5m": 5,
+            "cache_write_1h": 8
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {
+              "fast": {
+                "multiplier": 2
+              }
+            },
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-5",
+      "match": ["claude-opus-5", "claude-opus-5-2*"],
+      "notes": "input/output quoted; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input)",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 5,
+            "output": 25,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {
+              "fast": {
+                "multiplier": 2
+              }
+            },
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "match": ["claude-opus-4-8", "claude-opus-4-8-*"],
+      "notes": "input/output quoted; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input)",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 5,
+            "output": 25,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {
+              "fast": {
+                "multiplier": 2
+              }
+            },
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-7",
+      "match": ["claude-opus-4-7", "claude-opus-4-7-*"],
+      "notes": "input/output quoted; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input)",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 5,
+            "output": 25,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-6",
+      "match": ["claude-opus-4-6", "claude-opus-4-6-*"],
+      "notes": "input/output quoted; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input)",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 5,
+            "output": 25,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-5",
+      "match": ["claude-opus-4-5", "claude-opus-4-5-*"],
+      "notes": "input/output from memory; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input)",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 5,
+            "output": 25,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-1",
+      "match": ["claude-opus-4-1", "claude-opus-4-1-*"],
+      "notes": "from memory",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 15,
+            "output": 75,
+            "cache_read": 1.5,
+            "cache_write_5m": 18.75,
+            "cache_write_1h": 30
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4",
+      "match": ["claude-opus-4", "claude-opus-4-0", "claude-opus-4-2*"],
+      "notes": "from memory",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 15,
+            "output": 75,
+            "cache_read": 1.5,
+            "cache_write_5m": 18.75,
+            "cache_write_1h": 30
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "match": ["claude-sonnet-5-5", "claude-sonnet-5-5-*"],
+      "notes": "input/output quoted; cache read 0.10 (0.05x input) verified against cost-state, like Opus 5.5",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 2,
+            "output": 10,
+            "cache_read": 0.1,
+            "cache_write_5m": 2.5,
+            "cache_write_1h": 4
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-5",
+      "match": ["claude-sonnet-5", "claude-sonnet-5-2*"],
+      "notes": "derived from Sonnet 5.5 and standard multipliers",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 2,
+            "output": 10,
+            "cache_read": 0.2,
+            "cache_write_5m": 2.5,
+            "cache_write_1h": 4
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "match": ["claude-sonnet-4-6", "claude-sonnet-4-6-*"],
+      "notes": "quoted",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 3,
+            "output": 15,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "match": ["claude-sonnet-4-5", "claude-sonnet-4-5-*"],
+      "notes": "standard Sonnet 4.x pricing",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 3,
+            "output": 15,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-4",
+      "match": ["claude-sonnet-4", "claude-sonnet-4-0", "claude-sonnet-4-2*"],
+      "notes": "standard Sonnet 4.x pricing",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 3,
+            "output": 15,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-3-7-sonnet",
+      "match": ["claude-3-7-sonnet*"],
+      "notes": "standard Sonnet pricing",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 3,
+            "output": 15,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "match": ["claude-haiku-5-5", "claude-haiku-5-5-*"],
+      "notes": "input/output quoted; cache rates derived from standard multipliers (read 0.1x, write 5m 1.25x, write 1h 2x input); verified against cost-state",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 0.1,
+            "output": 0.5,
+            "cache_read": 0.01,
+            "cache_write_5m": 0.125,
+            "cache_write_1h": 0.2
+          },
+          "long_context": {
+            "threshold_input_tokens": 100000,
+            "per_mtok": {
+              "input": 0.5,
+              "output": 2.5,
+              "cache_read": 0.05,
+              "cache_write_5m": 0.625,
+              "cache_write_1h": 1.0
+            }
+          },
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "match": ["claude-haiku-4-5", "claude-haiku-4-5-*"],
+      "notes": "quoted",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 1,
+            "output": 5,
+            "cache_read": 0.1,
+            "cache_write_5m": 1.25,
+            "cache_write_1h": 2
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-3-5-haiku",
+      "match": ["claude-3-5-haiku*"],
+      "notes": "from memory",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 0.8,
+            "output": 4,
+            "cache_read": 0.08,
+            "cache_write_5m": 1,
+            "cache_write_1h": 1.6
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {},
+            "inference_geo": {}
+          }
+        }
+      ]
+    }
+  ],
+  "server_tools": [
+    {
+      "name": "web_search",
+      "periods": [
+        {
+          "effective_from": null,
+          "per_request": 0.01
+        }
+      ]
+    }
+  ]
+}

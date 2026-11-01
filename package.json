@@ -1,0 +1,24 @@
+{
+  "name": "token-dashboard",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "check:network": "bun scripts/check-network.ts",
+    "scan": "bun server/src/cli.ts scan",
+    "watch": "bun server/src/cli.ts watch",
+    "stats": "bun server/src/cli.ts stats",
+    "reprice": "bun server/src/cli.ts reprice"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

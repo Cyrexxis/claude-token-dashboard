@@ -118,7 +118,11 @@ server_tool_use.web_search_requests, server_tool_use.web_fetch_requests,
 service_tier, speed, inference_geo, iterations[]
 ```
 
-Other line types seen: `user`, `attachment`, `api-request`, `api-request-shape`, `api-request-blob`, `queue-operation`, `file-history-snapshot`, `custom-title`, `agent-name`, `last-prompt`, `atis-latch`. `api-request*` lines must be examined in phase 1 (they may cover side requests not visible as assistant messages).
+Other line types seen: `user`, `attachment`, `api-request`, `api-request-shape`, `api-request-blob`, `queue-operation`, `file-history-snapshot`, `custom-title`, `ai-title`, `agent-name`, `agent-color`, `agent-setting`, `tag`, `cost-state`, `last-prompt`, `atis-latch`.
+
+- `api-request*` lines record main-loop requests only (no usage) and are not ingested; see §18.5.
+- Session metadata lines (`custom-title`, `ai-title`, `agent-name`, `agent-color`, `agent-setting`, `tag`) are re-appended repeatedly; the latest value wins (an empty `tag` clears it). Stored as columns on `sessions`; display title = custom title, else AI title.
+- `cost-state` (one per Claude Code process, written at exit/resume): per-model token and cost totals including side requests (titles, web summaries, classifiers) that have no assistant line. Stored in `cost_states`, one row per `(session, process startTime, model)`, the latest snapshot of a process wins.
 
 ### 5.2 Rules
 - **One row per API response**, keyed by `(message.id, requestId)`. A single response is written as several lines (one per content block) repeating the same usage; resumed or forked sessions copy earlier lines. Both are deduplicated by this key, globally across files.
@@ -166,11 +170,11 @@ Each request gets a `source`:
 - Input, output, cache read, cache write 5 min, cache write 1 h, per model.
 - Modifiers where applicable: fast mode (`speed`), inference region (`inference_geo`), long-context pricing, service tier.
 - Server tools: web search per request (and others as they appear).
-- Thinking tokens: to verify whether they are already included in `output_tokens` (expected) — never double-count.
+- Thinking tokens: already included in `output_tokens` (verified against `cost-state`); stored separately for display only, never priced.
 
 ### 8.3 File format (schema version 1)
 
-Values below are placeholders; real values are filled from Anthropic's official pricing page when implementing.
+Real values live in `prices/prices.json`; the example shows the shape.
 
 ```json
 {
@@ -179,29 +183,38 @@ Values below are placeholders; real values are filled from Anthropic's official 
   "currency": "USD",
   "models": [
     {
-      "id": "claude-opus-5-5",
-      "match": ["claude-opus-5-5", "claude-opus-5-5-*"],
+      "id": "claude-haiku-5-5",
+      "match": ["claude-haiku-5-5", "claude-haiku-5-5-*"],
+      "notes": "why a value is derived rather than quoted",
       "periods": [
         {
-          "effective_from": "2026-09-21",
+          "effective_from": null,
           "effective_to": null,
           "per_mtok": {
-            "input": 0, "output": 0,
-            "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0
+            "input": 0.1, "output": 0.5,
+            "cache_read": 0.01, "cache_write_5m": 0.125, "cache_write_1h": 0.2
           },
-          "long_context": null,
-          "modifiers": { "speed": {}, "inference_geo": {} }
+          "long_context": {
+            "threshold_input_tokens": 100000,
+            "per_mtok": { "input": 0.5, "output": 2.5, "cache_read": 0.05, "cache_write_5m": 0.625, "cache_write_1h": 1 }
+          },
+          "modifiers": { "speed": { "fast": { "multiplier": 2 } }, "inference_geo": {} }
         }
       ]
     }
   ],
   "server_tools": [
-    { "name": "web_search", "periods": [ { "effective_from": "2025-01-01", "per_request": 0 } ] }
+    { "name": "web_search", "periods": [ { "effective_from": null, "per_request": 0.01 } ] }
   ]
 }
 ```
 
-Each request row stores the computed cost and the `price_period_id` used.
+- Dates are `YYYY-MM-DD` (UTC midnight). `effective_from: null` means "since the model's release"; `effective_to` is exclusive, `null` = open. Periods of one model must not overlap.
+- `match`: exact ids or a single trailing `*`; the first matching model wins, so dated ids (`claude-opus-4-5-20251101`) never fall back to a shorter family.
+- `long_context`: when input + cache read + cache writes exceed the threshold, all five rates switch.
+- `modifiers.speed.<speed>.multiplier` multiplies the token cost (not server-tool fees). `inference_geo` is accepted but not yet applied.
+- `prices.local.json`: a model with the same `id` replaces the shipped entry; new ids are matched first.
+- Each request row stores the computed cost and the `price_period_id` (`<model>@<effective_from|release>@<shipped|local>`). When the price content changes, all requests are repriced and rollups rebuilt.
 
 ---
 
@@ -210,16 +223,21 @@ Each request row stores the computed cost and the `price_period_id` used.
 ```
 installations      id, created_at, server_version, schema_version
 sources            id, kind, host, distro, root_path, last_scan_at, enabled
-files              id, source_id, path, file_key, size, offset, mtime, session_id, last_ingest_at
-sessions           id (sessionId), source_id, parent_session_id, cwd, project, title,
+files              id, source_id, path, file_key, size, offset, mtime, session_id, last_ingest_at,
+                   error_count, last_error
+sessions           id (sessionId), source_id, parent_session_id, cwd, project, title, ai_title,
+                   agent_name, agent_color, agent_setting, tag,
                    entrypoint, cc_version, first_ts, last_ts, desktop_meta_json
-requests           id, message_id, request_id, UNIQUE(message_id, request_id),
-                   session_id, agent_id, ts, model, source_id,
+requests           id, message_id, request_id ('' when absent), UNIQUE(message_id, request_id),
+                   session_id, agent_id, ts, model, source_id, file_id,
                    input, output, cache_read, cache_write_5m, cache_write_1h,
                    thinking, web_search, web_fetch,
-                   service_tier, speed, inference_geo,
+                   service_tier, speed, inference_geo, effort, is_sidechain,
                    cost_usd, price_period_id, unpriced, usage_raw_json
 price_periods      id, model_id, effective_from, effective_to, origin (shipped|local), values_json
+cost_states        session_id, start_time, ts, model, input, output, thinking, cache_read,
+                   cache_write, web_search, cost_usd, total_cost_usd, has_unknown_model_cost
+                   PRIMARY KEY(session_id, start_time, model)
 plan_snapshots     id, ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin (mod|desktop)
 plan_windows       org_id, kind, resets_at, peak_percent, tokens_in_window, cost_in_window
 daily_rollups      day, source_id, model, project, token columns…, cost_usd, request_count
@@ -423,8 +441,8 @@ No built files are committed; no npm publishing.
 1. Does WSL shut down the distro (and the service) when no Windows-side process holds it? → keepalive task needed?
 2. Cowork: where are transcripts stored and do they contain usage?
 3. Fields returned by `$.session.identity()` (account / org IDs) in the mod API.
-4. Are thinking tokens included in `output_tokens`? How do `iterations[]` relate to the top-level usage?
-5. Do `api-request*` transcript lines record requests (titles, compaction, classifiers) that have no assistant line?
+4. ~~Are thinking tokens included in `output_tokens`?~~ **Resolved (phase 1):** yes, included. `iterations[]` had a single entry equal to the top-level usage in all samples; stored raw in `usage_raw_json`, revisit if multi-entry ones appear.
+5. ~~Do `api-request*` transcript lines record side requests?~~ **Resolved (phase 1):** no. They record main-loop requests only (params, no usage; linked via the assistant line's `requestRef`). Side requests (titles, web summaries, classifiers) appear only in `cost-state` totals.
 6. `session.measure` and `$.process` behaviour in desktop-hosted Code sessions on Windows and WSL.
 7. `bun build --compile`: embedding the Vite output and `bun:sqlite` on `windows-x64`.
 8. Release authenticity: checksums from the same release only protect against corruption; consider GitHub artifact attestations (verified when `gh` is available) or signing.
