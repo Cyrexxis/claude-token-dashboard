@@ -47,7 +47,7 @@ A local dashboard for Claude usage: long-term token statistics by token type, AP
  Claude Code session (WSL or Windows)           Local machine
  ┌────────────────────────────────┐   HTTP    ┌──────────────────────────────────────────┐
  │ token-dashboard mod            │ ────────► │ token-dashboard program (Bun)            │
- │  session.start  → health/start │  127.0.0.1│  ├─ HTTP API (Hono) + bearer token       │
+ │  session.start  → health/start │  127.0.0.1│  ├─ HTTP API (Hono) + host/origin guard  │
  │  session.measure→ plan snapshot│           │  ├─ Ingester (transcripts → SQLite)      │
  │  turn.complete  → ingest signal│           │  ├─ Watchers (inotify / polling)         │
  │  /token-dashboard commands     │           │  ├─ Pricing engine (prices.json)         │
@@ -257,10 +257,12 @@ Indexes on `requests(ts)`, `requests(session_id)`, `requests(model, ts)`, `plan_
 - Checks the `Host` header (only `127.0.0.1:<port>` / `localhost:<port>`) to block DNS-rebinding attacks.
 - Environment: `TD_DATA_DIR`, `TD_PORT`, `TD_CONFIG` override defaults (used for development and tests).
 
-### 10.2 Authentication
-- `setup` generates a random token stored in the connection file (§11.3).
-- Mod requests send `Authorization: Bearer <token>`.
-- Browser: `/token-dashboard open` opens `http://127.0.0.1:<port>/auth?t=<one-time code>`; the server exchanges it for an HttpOnly, SameSite=Strict cookie. All API endpoints require the token or the cookie.
+### 10.2 Request guards (no login)
+No token, cookie or login (decided in phase 2). The server is single-user and bound to `127.0.0.1`; local processes running as the user can read `~/.claude` directly anyway, so a token would protect nothing from them. Browser-based attacks are covered by two checks on every request:
+- **Host:** anything other than `127.0.0.1:<port>` or `localhost:<port>` → `403` (DNS rebinding).
+- **Origin on writes:** a non-`GET`/`HEAD` request whose `Origin` header is present and not `http://127.0.0.1:<port>` or `http://localhost:<port>` → `403` (cross-site POST/PUT). Requests without `Origin` (curl, the mod) pass. Cross-site reads are already blocked by the browser's same-origin policy (no CORS headers are sent).
+
+Trade-off: other OS users on a shared machine can use the API like the owner: read the dashboard, and (since requests without `Origin` pass) save local prices and trigger rescans. Transcripts themselves stay protected by file permissions. If that ever matters, add an optional token in `config.json`.
 
 ### 10.3 API (`/api/v1`, JSON)
 
@@ -273,9 +275,11 @@ Write (mod):
 | `POST /ingest/trigger` | Ingest one session's transcript now |
 | `POST /live-usage` | Optional per-step counts for live display; replaced by ingested rows |
 
-Read (UI): `GET /summary`, `/timeseries?metric=&group=&from=&to=&bucket=`, `/sessions`, `/sessions/:id`, `/models`, `/projects`, `/plan/windows`, `/plan/snapshots`, `/prices`, `/sources`, `/status`.
+Read (UI): `GET /events` (SSE, §10.4), `GET /summary`, `/timeseries?metric=&group=&from=&to=&bucket=`, `/sessions`, `/sessions/:id`, `/models`, `/projects`, `/plan/windows`, `/plan/snapshots`, `/prices`, `/sources`, `/status`.
 
-Admin (UI): `PUT /prices/local`, `POST /sources/:id/rescan`, `POST /import/chat-export` (later).
+Admin (UI): `PUT /prices/local` (body = the raw JSON file, validated before it is written), `POST /sources/:id/rescan` (resets the source's read offsets and re-reads every transcript; dedup makes this safe), `POST /import/chat-export` (later).
+
+Read conventions (phase 2): `from`/`to` are server-local days `YYYY-MM-DD` between 1970 and 2100, inclusive, both optional. `timeseries` returns contiguous zero-filled buckets (week = Monday, month = the 1st) and keeps the top 8 groups plus one `other` series; `group=type` (token types) only with `metric=tokens`. `sessions` pages with `limit` (1–200, default 50) and `offset`. Errors are `{error, message}` JSON with status 400 / 404.
 
 Every write carries an idempotency key (e.g. `session:turn:step`, `org:kind:resetsAt:percent`) so retries never double-count. Requests carry `X-TD-Protocol`; the server rejects unknown major versions with a clear "update the plugin / server" message.
 
@@ -309,10 +313,10 @@ Rules:
 ### 11.2 Commands
 | Command | Behaviour |
 |---|---|
-| `/token-dashboard setup` | Detect platform (WSL / Linux / Windows) → show the plan and ask for confirmation → download program `v<plugin version>` for the platform from GitHub Releases, verify checksum → install to app-data folder → create data folder, token, connection file(s) → register service → offer `cleanupPeriodDays` change → wait for health → print dashboard link. From a Windows session: offer "install into WSL (recommended)" or "Windows server (limited)". |
+| `/token-dashboard setup` | Detect platform (WSL / Linux / Windows) → show the plan and ask for confirmation → download program `v<plugin version>` for the platform from GitHub Releases, verify checksum → install to app-data folder → create data folder, connection file(s) → register service → offer `cleanupPeriodDays` change → wait for health → print dashboard link. From a Windows session: offer "install into WSL (recommended)" or "Windows server (limited)". |
 | `/token-dashboard update` | Offered when the plugin's version is newer than the installed program. Download the new program → stop service → swap (keep previous for rollback) → start → run DB migrations → verify health. |
 | `/token-dashboard status` | Service state, connection, protocol versions, sources with last scan time, unpriced models, log location. |
-| `/token-dashboard open` | Open the dashboard in the default browser with a one-time login link: `wslview` or `cmd.exe /c start` in WSL (`xdg-open` is often missing there), `xdg-open` on Linux, `cmd /c start` on Windows. The link is also printed as a fallback. |
+| `/token-dashboard open` | Open the dashboard URL in the default browser: `wslview` or `cmd.exe /c start` in WSL (`xdg-open` is often missing there), `xdg-open` on Linux, `cmd /c start` on Windows. The link is also printed as a fallback. |
 | `/token-dashboard uninstall` | Remove service and program; keep the database unless the user explicitly asks to delete it. |
 
 Downloads and service management use `$.process.run` / `$.process.spawn` (`curl` on Linux/WSL, `curl.exe` or PowerShell on Windows). Progress is shown via `$.ui.status`. These commands work in Claude Code sessions (CLI, desktop Code tab, IDE); not in chat or Cowork.
@@ -323,7 +327,6 @@ Linux/WSL: `~/.config/token-dashboard/server.json` · Windows: `%APPDATA%\token-
 ```json
 {
   "url": "http://127.0.0.1:47811",
-  "token": "…",
   "protocol": 1,
   "serverLocation": "wsl",
   "start": ["systemctl", "--user", "start", "token-dashboard"]
@@ -359,9 +362,12 @@ For a WSL server, setup also writes the Windows-side file (via `/mnt/c`) with `"
 |---|---|---|
 | Program | `~/.local/share/token-dashboard/bin/` (current + previous) | `%LOCALAPPDATA%\token-dashboard\bin\` |
 | Database | `~/.local/share/token-dashboard/data/token-dashboard.db` | `%LOCALAPPDATA%\token-dashboard\data\` |
+| Config | `~/.config/token-dashboard/config.json` | `%APPDATA%\token-dashboard\config.json` |
 | Local prices | `~/.config/token-dashboard/prices.local.json` | `%APPDATA%\token-dashboard\prices.local.json` |
 | Connection file | `~/.config/token-dashboard/server.json` | `%APPDATA%\token-dashboard\server.json` |
 | Logs | journald | `%LOCALAPPDATA%\token-dashboard\logs\` |
+
+`config.json` is optional: `extraRoots` (extra `.claude` folders), `pollIntervalMs` (default 5000, ≥ 100), `windowsRoots` (`"auto"` or `false`), `subscriptionMonthlyUsd` (shown against API-equivalent cost on the Overview; default none). `TD_CONFIG` points at another `config.json`; `prices.local.json` is then read from the same folder.
 
 Nothing durable lives in the plugin cache (`~/.claude/plugins/cache/…`), which Claude Code replaces on updates and deletes 14 days later. Uninstalling the plugin does not delete history.
 
@@ -417,12 +423,12 @@ No built files are committed; no npm publishing.
 
 ## 16. Development and testing
 
-- **Daily development:** `bun run dev` starts Vite (UI with hot reload) and the Bun server; Vite proxies `/api` to the server. The mod is loaded with `claude --plugin-dir ./plugin` (or `CLAUDE_CODE_PLUGIN_DIRS` for desktop sessions).
+- **Daily development:** `bun run dev` starts Vite (UI with hot reload, `http://127.0.0.1:5173`) and the Bun server (`serve`); Vite proxies `/api` to the server and rewrites `Host` and `Origin` so the request guards (§10.2) pass. `bun run serve` alone serves the last `bun run build:web` output. The mod is loaded with `claude --plugin-dir ./plugin` (or `CLAUDE_CODE_PLUGIN_DIRS` for desktop sessions).
 - **Mod tests:** `claude plugin test ./plugin`.
 - **Server tests:** `bun test` with fixtures covering duplicate lines, resumed sessions, subagents, truncated files, unknown models, price period boundaries.
 - **Install-flow test:** `claude plugin marketplace add <repo folder>` with a dev marketplace name (`token-dashboard-dev`); remove afterwards.
 - **Fresh-user test:** `CLAUDE_CONFIG_DIR=~/cc-sandbox claude`, install from GitHub, delete the folder afterwards.
-- **Isolation:** `TD_DATA_DIR`, `TD_PORT`, service name `token-dashboard-dev`, and a configurable release download URL (pointing to a local build or a test release).
+- **Isolation:** `TD_DATA_DIR`, `TD_CONFIG`, `TD_PORT`, service name `token-dashboard-dev`, and a configurable release download URL (pointing to a local build or a test release).
 
 ---
 
@@ -444,7 +450,7 @@ No built files are committed; no npm publishing.
 4. ~~Are thinking tokens included in `output_tokens`?~~ **Resolved (phase 1):** yes, included. `iterations[]` had a single entry equal to the top-level usage in all samples; stored raw in `usage_raw_json`, revisit if multi-entry ones appear.
 5. ~~Do `api-request*` transcript lines record side requests?~~ **Resolved (phase 1):** no. They record main-loop requests only (params, no usage; linked via the assistant line's `requestRef`). Side requests (titles, web summaries, classifiers) appear only in `cost-state` totals.
 6. `session.measure` and `$.process` behaviour in desktop-hosted Code sessions on Windows and WSL.
-7. `bun build --compile`: embedding the Vite output and `bun:sqlite` on `windows-x64`.
+7. `bun build --compile`: embedding the Vite output and `bun:sqlite` on `windows-x64`. (Phase 2 serves `web/dist` from disk next to the source; phase 4 embeds it.)
 8. Release authenticity: checksums from the same release only protect against corruption; consider GitHub artifact attestations (verified when `gh` is available) or signing.
 9. Format and usefulness of the desktop app's `plan-usage-history.json` (currently samples with empty `u`).
 10. Window semantics for per-model weekly limits and "extra usage" (shown in the desktop usage card) and whether the mod receives them.
