@@ -142,11 +142,11 @@ Each request gets a `source`:
 
 ## 6. Plan usage tracking
 
-- The mod sends a snapshot on every `session.measure` event (fires after each main-thread turn and whenever a window moves by a whole percentage point): `{kind, percentUsed, resetsAt}` per window, plus the session's cost.
-- The account/org is taken from `$.session.identity()` (fields to verify) so several accounts stay separate.
+- The mod sends a snapshot on every `session.measure` event (fires after each main-thread turn and whenever a window moves by a whole percentage point): `{kind, percentUsed, resetsAt}` per window, plus the session's cost. Kinds: `five_hour`, `seven_day`, and a gateway's `spend_limit` (phase 3: no per-model windows exist). `resetsAt` is stored rounded to the minute.
+- Single account (decided in phase 3): every snapshot has `org_id = 'default'`. `$.session.identity()` answers only mods installed via managed settings, so it is not used; the column keeps room for several accounts later.
 - Several sessions report the same account-wide numbers; the server stores a snapshot only when a value changed. A window is identified by `(org, kind, resetsAt)`.
 - Optional: import `plan-usage-history.json` from the desktop app (read-only, best effort, format undocumented).
-- **Estimation (experimental):** per window, relate the percentage increase to the token/cost increase recorded in the same period to estimate "tokens (or API-equivalent dollars) per 1 %". Plan percentages include chat and Cowork; the gap between observed percentage and Code-attributed usage shows non-Code consumption.
+- **Per 1 % (phase 3):** per window, API-equivalent cost and tokens from the window's start up to the reading that set its peak, divided by the peak %. Computed at read time from `requests` (`plan_windows` stays unused). Labelled "Claude Code only": plan percentages include chat and Cowork, so the figure reads low on days with chat use. Windows under 5 % are shown faded.
 
 ---
 
@@ -270,10 +270,8 @@ Write (mod):
 | Method & path | Purpose |
 |---|---|
 | `GET /api/health` | `{ok, version, protocol}` — unauthenticated, no data |
-| `POST /sessions` | Register session: id, cwd, surface, Claude Code version, org, platform |
 | `POST /plan-snapshots` | Plan windows + session cost; deduplicated by value |
 | `POST /ingest/trigger` | Ingest one session's transcript now |
-| `POST /live-usage` | Optional per-step counts for live display; replaced by ingested rows |
 
 Read (UI): `GET /events` (SSE, §10.4), `GET /summary`, `/timeseries?metric=&group=&from=&to=&bucket=`, `/sessions`, `/sessions/:id`, `/models`, `/projects`, `/plan/windows`, `/plan/snapshots`, `/prices`, `/sources`, `/status`.
 
@@ -286,8 +284,8 @@ Every write carries an idempotency key (e.g. `session:turn:step`, `org:kind:rese
 ### 10.4 Live updates (SSE)
 `GET /api/v1/events` streams:
 - `usage.updated` `{sessionIds, from, to}`
-- `plan.snapshot` `{org, kind, percentUsed, resetsAt}`
-- `session.started` / `session.ended`
+- `plan.snapshot` `{ts, kind, percentUsed, resetsAt}` (one per stored reading)
+- `session.started` / `session.ended` (not built; nothing needs them yet)
 - `prices.updated`, `ingest.status`
 
 The UI (TanStack Query) invalidates only the affected queries. Expected latency: about 1 s for WSL sessions; a few seconds for Windows sessions without the mod (poll interval), about 1 s with the mod.
@@ -299,15 +297,17 @@ The UI (TanStack Query) invalidates only the affected queries. Expected latency:
 ### 11.1 Events
 | Event | Action |
 |---|---|
-| `session.start` | Read connection file; `GET /api/health`; if unreachable run the start command, then retry health a few times; `POST /sessions`; flush queued items |
+| `session.start` | Register `/token-dashboard`; read connection file; `GET /api/health`; if unreachable run the start command, then retry health a few times; flush queued ingest triggers |
 | `session.measure` | `POST /plan-snapshots` |
-| `turn.step` (optional) | `POST /live-usage` from the step result's `usage` |
 | `turn.complete` | `POST /ingest/trigger` |
 | `session.end` | Final trigger and queue flush within the short end budget |
 
 Rules:
 - Hooks call `next(e)` first and send requests without awaiting them; the mod never delays Claude.
-- Failed requests go to a bounded queue in `$.store` and are resent once the server is reachable.
+- Network sends run from `$.clock.after` timers, outside the hook's dispatch (`session.end` sends inline, bounded to 1.5 s).
+- Failed ingest triggers go to a bounded queue in `$.store` (one per session, 200 max) and are resent once the server is reachable. Plan snapshots are not queued: plan % is cumulative, the next reading carries it.
+- `turn.complete` of subagent turns sends no trigger; the main turn's trigger re-reads the session's subagent folder.
+- `/clear` fires no `session.start`; the mod re-registers `/token-dashboard` on `classic.SessionStart` with `source: "clear"` (commands are per session).
 - If no connection file exists (e.g. WSL session while the server runs on Windows), the mod stays silent apart from one notice.
 
 ### 11.2 Commands
@@ -333,7 +333,7 @@ Linux/WSL: `~/.config/token-dashboard/server.json` · Windows: `%APPDATA%\token-
 }
 ```
 
-For a WSL server, setup also writes the Windows-side file (via `/mnt/c`) with `"start": ["wsl.exe", "-d", "<distro>", "--", "systemctl", "--user", "start", "token-dashboard"]`. Plugin `userConfig` can override `url` for unusual setups.
+`serve` writes `url` and `protocol` into this file at start-up, next to `config.json` (so `TD_CONFIG` moves it), keeping any other keys such as `start`. The mod finds it the same way (`TD_CONFIG`, else the platform folder). For a WSL server, setup (phase 4) also writes the Windows-side file (via `/mnt/c`) with `"start": ["wsl.exe", "-d", "<distro>", "--", "systemctl", "--user", "start", "token-dashboard"]`. Plugin `userConfig` can override `url` for unusual setups.
 
 ### 11.4 Service registration
 - **WSL / Linux:** systemd user unit `~/.config/systemd/user/token-dashboard.service` (`Restart=on-failure`), enabled and started via `systemctl --user`. Logs via `journalctl --user -u token-dashboard`.
@@ -436,9 +436,9 @@ No built files are committed; no npm publishing.
 
 1. **Core** — scaffolding (Bun workspaces), schema + migrations, transcript parser + ingester with dedup, watchers/polling, price engine with `prices.json`, fixtures and tests. Examine `api-request` lines.
 2. **API + UI** — Hono API, auth, SSE, React dashboard (overview, tokens, cost, sessions, status).
-3. **Mod** — health/start, plan snapshots, ingest triggers, offline queue, `status` and `open` commands; plan usage views.
+3. **Mod** — health/start, plan snapshots, ingest triggers, offline queue, `status` and `open` commands; Plan view, Overview plan tile, price and tokens per 1 % (moved up from phase 5). Not built: `POST /sessions`, `/live-usage`, `session.started/ended` events. Windows-side connection file stays in phase 4, so Windows sessions keep polling until then.
 4. **Distribution** — release workflow, `setup` / `update` / `uninstall`, systemd and Task Scheduler, connection files, Windows-server mode, WSL keepalive (if needed), retention setting.
-5. **Extras** — Cowork parser (after verification), chat export import (estimates), tokens-per-percent estimation, optional in-app panel.
+5. **Extras** — Cowork parser (after verification), chat export import (estimates), optional in-app panel.
 
 ---
 
@@ -446,11 +446,11 @@ No built files are committed; no npm publishing.
 
 1. Does WSL shut down the distro (and the service) when no Windows-side process holds it? → keepalive task needed?
 2. Cowork: where are transcripts stored and do they contain usage?
-3. Fields returned by `$.session.identity()` (account / org IDs) in the mod API.
+3. ~~Fields returned by `$.session.identity()`~~ **Resolved (phase 3):** `{kind, organizationId?, organizationType?, email?, isVerified}`, answered only to mods installed via managed settings; others get `{deny}`. Not used (single account).
 4. ~~Are thinking tokens included in `output_tokens`?~~ **Resolved (phase 1):** yes, included. `iterations[]` had a single entry equal to the top-level usage in all samples; stored raw in `usage_raw_json`, revisit if multi-entry ones appear.
 5. ~~Do `api-request*` transcript lines record side requests?~~ **Resolved (phase 1):** no. They record main-loop requests only (params, no usage; linked via the assistant line's `requestRef`). Side requests (titles, web summaries, classifiers) appear only in `cost-state` totals.
 6. `session.measure` and `$.process` behaviour in desktop-hosted Code sessions on Windows and WSL.
 7. `bun build --compile`: embedding the Vite output and `bun:sqlite` on `windows-x64`. (Phase 2 serves `web/dist` from disk next to the source; phase 4 embeds it.)
 8. Release authenticity: checksums from the same release only protect against corruption; consider GitHub artifact attestations (verified when `gh` is available) or signing.
 9. Format and usefulness of the desktop app's `plan-usage-history.json` (currently samples with empty `u`).
-10. Window semantics for per-model weekly limits and "extra usage" (shown in the desktop usage card) and whether the mod receives them.
+10. ~~Window semantics for per-model weekly limits~~ **Resolved (phase 3):** the mod receives only `five_hour`, `seven_day` and `spend_limit`; no per-model windows. "Extra usage" has no field in the mod API (2.1.316).
