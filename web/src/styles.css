@@ -208,7 +208,8 @@ button.primary {
   background: var(--surface);
   border-color: var(--border);
 }
-.th-sort {
+.th-sort,
+.row-pick {
   font-weight: inherit;
   color: inherit;
   background: none;
@@ -242,8 +243,14 @@ th.num {
 tr.link {
   cursor: pointer;
 }
+tr.selected td {
+  background: var(--hover);
+}
 tr.link:hover td {
   background: var(--bg);
+}
+.row-pick {
+  color: var(--accent);
 }
 .error {
   color: var(--danger);

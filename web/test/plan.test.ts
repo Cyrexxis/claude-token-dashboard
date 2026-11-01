@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mergeReadings, windowTicks } from "../src/views/Plan";
+import { mergeReadings, overlappingWeekly, windowTicks } from "../src/views/Plan";
 
 const H = 3_600_000;
 const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number) => ({
@@ -41,4 +41,15 @@ test("windowTicks: whole hours for 5 hours, local midnights for a week", () => {
   const days = windowTicks("seven_day", start, start + 7 * 24 * H);
   expect(days).toHaveLength(7);
   expect(days.every((t) => new Date(t).getHours() === 0)).toBe(true);
+});
+
+test("overlappingWeekly: weekly windows that overlap a 5-hour window; none for a weekly one", () => {
+  const win = (kind: string, startMs: number | null, resetsAt: number) =>
+    ({ kind, startMs, resetsAt }) as Parameters<typeof overlappingWeekly>[0];
+  const five = win("five_hour", 10 * H, 15 * H);
+  const inside = win("seven_day", 0, 100 * H);
+  const before = win("seven_day", -168 * H, 0);
+  const straddle = win("seven_day", 12 * H, 180 * H);
+  expect(overlappingWeekly(five, [five, inside, before, straddle])).toEqual([inside, straddle]);
+  expect(overlappingWeekly(inside, [five, inside])).toEqual([]);
 });

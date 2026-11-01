@@ -238,11 +238,12 @@ const slotLabel = (kind: Kind) => (b: string) =>
       });
 
 /** Tokens or cost in the current window, 5-minute slots for 5-hour, 3-hour slots for weekly. */
-function WindowSeries({ current }: { current: PlanWindow[] }) {
-  const [kind, setKind] = useState<Kind>("five_hour");
+function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: PlanWindow | null }) {
+  const [tabKind, setKind] = useState<Kind>("five_hour");
+  const kind = (picked?.kind as Kind | undefined) ?? tabKind;
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const [group, setGroup] = useState<Group>("type");
-  const w = current.find((c) => c.kind === kind && c.startMs !== null);
+  const w = picked ?? current.find((c) => c.kind === kind && c.startMs !== null);
   const params = w && {
     fromMs: w.startMs ?? 0,
     toMs: w.resetsAt,
@@ -259,7 +260,8 @@ function WindowSeries({ current }: { current: PlanWindow[] }) {
     <section className="card">
       <div className="toolbar">
         <h2 style={{ margin: 0, flex: 1 }}>
-          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the current window
+          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the{" "}
+          {picked ? "selected" : "current"} window
         </h2>
         <div className="tabs" role="tablist">
           {(["tokens", "cost"] as const).map((m) => (
@@ -284,7 +286,7 @@ function WindowSeries({ current }: { current: PlanWindow[] }) {
             ))}
           </select>
         </label>
-        <WindowTabs kind={kind} onChange={setKind} />
+        {!picked && <WindowTabs kind={kind} onChange={setKind} />}
       </div>
       {!w && <p className="muted empty">No current {kindLabel(kind)} window.</p>}
       {q.error && <p className="error">{q.error.message}</p>}
@@ -306,6 +308,16 @@ function WindowSeries({ current }: { current: PlanWindow[] }) {
   );
 }
 
+/** Weekly windows overlapping `w` (a 5-hour window); none for a weekly window. */
+export function overlappingWeekly(w: PlanWindow, all: PlanWindow[]): PlanWindow[] {
+  if (w.kind !== "five_hour" || w.startMs === null) return [];
+  const start = w.startMs;
+  return all.filter(
+    (x) =>
+      x.kind === "seven_day" && x.startMs !== null && x.startMs < w.resetsAt && start < x.resetsAt,
+  );
+}
+
 const perPct = (v: number | null, f: (n: number) => string) => (v === null ? "—" : f(v));
 
 export function Plan({ range }: ViewProps) {
@@ -313,6 +325,8 @@ export function Plan({ range }: ViewProps) {
   const windows = usePlanWindows(range);
   const [chartKind, setChartKind] = useState<Kind>("five_hour");
   const [tableKind, setTableKind] = useState<Kind>("five_hour");
+  const [listKind, setListKind] = useState<Kind>("five_hour");
+  const [picked, setPicked] = useState<PlanWindow | null>(null);
   if (windows.error) return <p className="error">{windows.error.message}</p>;
   if (!windows.data) return <p className="muted">Loading…</p>;
   const { current, past } = windows.data;
@@ -324,8 +338,13 @@ export function Plan({ range }: ViewProps) {
       </p>
     );
   const win = (k: Kind) => current.find((w) => w.kind === k && w.startMs !== null);
-  const chartWin = win(chartKind);
-  const tableWin = win(tableKind);
+  const chartWin = picked ?? win(chartKind);
+  // A picked window brings its own readings; a 5-hour one also shows the weekly window it overlaps.
+  const chartCurrent = picked
+    ? [picked, ...overlappingWeekly(picked, [...current, ...past]).slice(0, 1)]
+    : current;
+  const tableWin = picked ?? win(tableKind);
+  const listed = [...current, ...past].filter((w) => w.kind === listKind && w.startMs !== null);
   const none = (k: Kind) => <p className="muted empty">No current {kindLabel(k)} window.</p>;
   return (
     <>
@@ -336,29 +355,46 @@ export function Plan({ range }: ViewProps) {
           ))}
         </div>
       )}
-      <section className="card">
-        <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>Plan usage in the current window</h2>
-          <WindowTabs kind={chartKind} onChange={setChartKind} />
+      {picked && (
+        <div className="card toolbar">
+          <span style={{ flex: 1 }}>
+            Charts and sessions show the past {kindLabel(picked.kind)} window{" "}
+            {when(picked.startMs ?? 0)} → {when(picked.resetsAt)}.
+          </span>
+          <button type="button" className="primary" onClick={() => setPicked(null)}>
+            Back to current window
+          </button>
         </div>
-        {chartWin ? <Timeline w={chartWin} current={current} now={now} /> : none(chartKind)}
-      </section>
-      <WindowSeries current={current} />
+      )}
       <section className="card">
         <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>Sessions in the current window</h2>
-          <WindowTabs kind={tableKind} onChange={setTableKind} />
+          <h2 style={{ margin: 0, flex: 1 }}>
+            Plan usage in the {picked ? "selected" : "current"} window
+          </h2>
+          {!picked && <WindowTabs kind={chartKind} onChange={setChartKind} />}
+        </div>
+        {chartWin ? <Timeline w={chartWin} current={chartCurrent} now={now} /> : none(chartKind)}
+      </section>
+      <WindowSeries current={current} picked={picked} />
+      <section className="card">
+        <div className="toolbar">
+          <h2 style={{ margin: 0, flex: 1 }}>
+            Sessions in the {picked ? "selected" : "current"} window
+          </h2>
+          {!picked && <WindowTabs kind={tableKind} onChange={setTableKind} />}
         </div>
         {tableWin ? <WindowSessions w={tableWin} /> : none(tableKind)}
       </section>
       <section className="card">
-        <h2>Past windows</h2>
-        {past.length ? (
+        <div className="toolbar">
+          <h2 style={{ margin: 0, flex: 1 }}>Windows</h2>
+          <WindowTabs kind={listKind} onChange={setListKind} />
+        </div>
+        {listed.length ? (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Window</th>
                   <th>Start → reset</th>
                   <th className="num">Peak</th>
                   <th className="num">Tokens</th>
@@ -368,32 +404,43 @@ export function Plan({ range }: ViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {past.map((w) => (
-                  <tr
-                    key={`${w.kind}-${w.resetsAt}`}
-                    className={w.lowSignal ? "faded" : undefined}
-                    title={w.lowSignal ? "Under 5 %: per-1 % figures are noisy" : undefined}
-                  >
-                    <td>{kindLabel(w.kind)}</td>
-                    <td>
-                      {w.startMs === null ? "" : `${when(w.startMs)} → `}
-                      {when(w.resetsAt)}
-                    </td>
-                    <td className="num">{pct(w.peakPercent)}</td>
-                    <td className="num">{fmtTokens(w.tokens)}</td>
-                    <td className="num">{fmtUsd(w.costUsd)}</td>
-                    <td className="num">{perPct(w.usdPerPercent, fmtUsd)}</td>
-                    <td className="num">{perPct(w.tokensPerPercent, fmtTokens)}</td>
-                  </tr>
-                ))}
+                {listed.map((w) => {
+                  // The current row stands for "no pick": choosing it goes back to the current view.
+                  const isPicked = w.current
+                    ? picked === null
+                    : picked?.kind === w.kind && picked.resetsAt === w.resetsAt;
+                  const pick = () => setPicked(w.current ? null : w);
+                  const cls = ["link", w.lowSignal && "faded", isPicked && "selected"];
+                  return (
+                    <tr
+                      key={`${w.kind}-${w.resetsAt}`}
+                      className={cls.filter(Boolean).join(" ")}
+                      title={w.lowSignal ? "Under 5 %: per-1 % figures are noisy" : undefined}
+                      onClick={pick}
+                    >
+                      <td>
+                        <button type="button" className="row-pick" aria-pressed={isPicked}>
+                          {when(w.startMs ?? 0)} → {when(w.resetsAt)}
+                        </button>
+                        {w.current && <span className="muted"> (current)</span>}
+                      </td>
+                      <td className="num">{pct(w.peakPercent)}</td>
+                      <td className="num">{fmtTokens(w.tokens)}</td>
+                      <td className="num">{fmtUsd(w.costUsd)}</td>
+                      <td className="num">{perPct(w.usdPerPercent, fmtUsd)}</td>
+                      <td className="num">{perPct(w.tokensPerPercent, fmtTokens)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="muted">No finished windows in this period.</p>
+          <p className="muted">No {kindLabel(listKind)} windows in this period.</p>
         )}
         <p className="muted note">
-          Per-1 % figures are Claude Code only, counted up to the last plan reading. {CHAT_NOTE}
+          Pick a window to show it in the charts and sessions. Per-1 % figures are Claude Code only,
+          counted up to the last plan reading. {CHAT_NOTE}
         </p>
       </section>
     </>
