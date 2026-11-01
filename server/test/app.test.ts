@@ -29,6 +29,10 @@ function setup(webDir: string | null = null) {
   const ingest: IngestService = {
     scanAll: async () => ({ files: 0, newRequests: 0, errors: 0 }),
     ingestPaths: async () => ({ newRequests: 0, sessionIds: [], from: null, to: null, errors: 0 }),
+    ingestSession: async (id) => {
+      calls.push(`session ${id}`);
+      return { newRequests: 0, sessionIds: [], from: null, to: null, errors: 0, files: 0 };
+    },
     rescanSource: async (id) => {
       calls.push(`rescan ${id}`);
       return { newRequests: 0, sessionIds: [], from: null, to: null, errors: 0 };
@@ -86,6 +90,59 @@ test("cross-site rescan and price save → 403 and nothing queued or written", a
     (await req("/api/v1/prices/local", { method: "PUT", body: "{}", headers: { origin } })).status,
   ).toBe(403);
   expect(calls).toEqual([]);
+});
+
+test("POST /plan-snapshots stores, emits plan.snapshot; invalid → 400; cross-site → 403", async () => {
+  const { req } = setup();
+  const seen: unknown[] = [];
+  const on = (p: unknown) => seen.push(p);
+  bus.on("plan.snapshot", on);
+  const post = (body: unknown, headers: Record<string, string> = {}) =>
+    req("/api/v1/plan-snapshots", { method: "POST", body: JSON.stringify(body), headers });
+  const body = {
+    windows: [{ kind: "five_hour", percentUsed: 7, resetsAt: "2026-10-15T17:00:00Z" }],
+  };
+  const r = await post(body);
+  bus.off("plan.snapshot", on);
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ stored: 1 });
+  expect(seen).toMatchObject([
+    { kind: "five_hour", percentUsed: 7, resetsAt: Date.parse("2026-10-15T17:00:00Z") },
+  ]);
+  const bad = await post({ windows: [] });
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toMatchObject({ error: "bad_request" });
+  expect((await post(body, { origin: "http://evil.example" })).status).toBe(403);
+  const broken = await req("/api/v1/plan-snapshots", { method: "POST", body: "{nope" });
+  expect(broken.status).toBe(400);
+});
+
+test("GET /plan/windows and /plan/snapshots: 200 with shapes; bad range → 400", async () => {
+  const { req } = setup();
+  const w = await req("/api/v1/plan/windows");
+  expect(w.status).toBe(200);
+  expect(await w.json()).toEqual({ current: [], past: [] });
+  const s = await req("/api/v1/plan/snapshots?from=2026-10-01&to=2026-10-31");
+  expect(await s.json()).toEqual({ points: [] });
+  expect((await req("/api/v1/plan/windows?from=bad")).status).toBe(400);
+  expect((await req("/api/v1/plan/snapshots?to=2026-13-01")).status).toBe(400);
+});
+
+test("POST /ingest/trigger queues the session; bad body → 400", async () => {
+  const { req, calls } = setup();
+  const post = (body: string) => req("/api/v1/ingest/trigger", { method: "POST", body });
+  const r = await post(JSON.stringify({ sessionId: "s1" }));
+  expect(r.status).toBe(202);
+  expect(await r.json()).toEqual({ queued: true });
+  for (const bad of [
+    "{}",
+    '{"sessionId":5}',
+    '{"sessionId":""}',
+    JSON.stringify({ sessionId: "x".repeat(201) }),
+    "nope",
+  ])
+    expect((await post(bad)).status).toBe(400);
+  expect(calls).toEqual(["session s1"]);
 });
 
 test("X-TD-Protocol 2 → 400 protocol; 1 passes", async () => {

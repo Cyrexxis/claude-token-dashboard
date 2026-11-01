@@ -7,6 +7,7 @@ export type Config = {
   dbPath: string;
   configPath: string;
   localPricesPath: string;
+  connectionPath: string;
   port: number;
   extraRoots: string[];
   pollIntervalMs: number;
@@ -39,6 +40,7 @@ export function loadConfig(env: Env = process.env): Config {
     configPath,
     // Next to config.json, so TD_CONFIG isolates every config file.
     localPricesPath: join(dirname(configPath), "prices.local.json"),
+    connectionPath: join(dirname(configPath), "server.json"),
     port,
     extraRoots: file.extraRoots ?? [],
     pollIntervalMs: file.pollIntervalMs ?? 5000,

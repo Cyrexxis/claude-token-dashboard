@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type IngestState, validatePriceFile } from "@td/shared";
 import type { Config } from "./config";
@@ -13,6 +13,8 @@ import { createQueue } from "./watch/watcher";
 export type IngestService = {
   scanAll(): Promise<{ files: number; newRequests: number; errors: number }>;
   ingestPaths(root: Root, paths: string[]): Promise<IngestResult>;
+  /** The mod's "ingest now": one session's files, or every root when the session is not known yet. */
+  ingestSession(sessionId: string): Promise<IngestResult & { files: number }>;
   rescanSource(sourceId: number): Promise<IngestResult | null>;
   saveLocalPrices(
     text: string,
@@ -64,13 +66,45 @@ export function createIngestService(db: Database, config: Config, roots: Root[])
     return { ...r, files: paths.length };
   };
 
+  const scanRoots = async (table: PriceTable) => {
+    const total = { files: 0, newRequests: 0, errors: 0 };
+    for (const root of roots) {
+      const r = await ingestRoot(ensureSource(db, root), root.rootPath, table);
+      total.files += r.files;
+      total.newRequests += r.newRequests;
+      total.errors += r.errors;
+    }
+    return total;
+  };
+
   return {
-    scanAll: () =>
+    scanAll: () => job(0, scanRoots),
+
+    ingestSession: (sessionId) =>
       job(0, async (table) => {
-        const total = { files: 0, newRequests: 0, errors: 0 };
-        for (const root of roots) {
-          const r = await ingestRoot(ensureSource(db, root), root.rootPath, table);
-          total.files += r.files;
+        const known = db
+          .query<{ path: string; source_id: number; root_path: string }, [string]>(
+            `SELECT f.path, f.source_id, s.root_path FROM files f JOIN sources s ON s.id = f.source_id
+             WHERE f.session_id = ?`,
+          )
+          .all(sessionId);
+        const empty = { sessionIds: [], from: null, to: null };
+        if (!known.length) return { ...empty, ...(await scanRoots(table)) };
+        const bySource = new Map<number, { rootPath: string; paths: Set<string> }>();
+        for (const f of known) {
+          const src = bySource.get(f.source_id) ?? { rootPath: f.root_path, paths: new Set() };
+          bySource.set(f.source_id, src);
+          src.paths.add(f.path);
+          // <session>.jsonl has a sibling <session>/ folder holding subagent transcripts, new ones included.
+          const dir = f.path.replace(/\.jsonl$/, "");
+          if (dir !== f.path && existsSync(dir))
+            for (const p of new Bun.Glob("**/*.jsonl").scanSync({ cwd: dir, absolute: true }))
+              src.paths.add(p);
+        }
+        const total = { ...empty, files: 0, newRequests: 0, errors: 0 };
+        for (const [sourceId, { rootPath, paths }] of bySource) {
+          const r = await ingestFiles(db, sourceId, rootPath, [...paths], table);
+          total.files += paths.size;
           total.newRequests += r.newRequests;
           total.errors += r.errors;
         }

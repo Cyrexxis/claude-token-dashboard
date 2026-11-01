@@ -7,6 +7,7 @@ import { serveStatic } from "hono/bun";
 import { streamSSE } from "hono/streaming";
 import type { Config } from "../config";
 import { bus } from "../events";
+import { getPlanSnapshots, getPlanWindows, recordSnapshots } from "../plan";
 import type { IngestService } from "../service";
 import { SERVER_VERSION } from "../version";
 import { hostGuard, originGuard } from "./guards";
@@ -30,7 +31,7 @@ export type AppDeps = {
   webDir: string | null;
 };
 
-const SSE_EVENTS = ["usage.updated", "prices.updated", "ingest.status"] as const;
+const SSE_EVENTS = ["usage.updated", "prices.updated", "ingest.status", "plan.snapshot"] as const;
 const PING_MS = 25_000;
 
 function oneOf<T extends string>(
@@ -43,6 +44,13 @@ function oneOf<T extends string>(
   if (!allowed.includes(v as T))
     throw new BadRequest(`${name} must be one of ${allowed.join(", ")}`);
   return v as T;
+}
+async function jsonBody(req: Request): Promise<unknown> {
+  try {
+    return await req.json();
+  } catch {
+    throw new BadRequest("body must be JSON");
+  }
 }
 const int = (v: string | undefined) => (v === undefined ? undefined : Number(v));
 
@@ -99,6 +107,8 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
       ? c.json(s)
       : c.json<ApiError>({ error: "not_found", message: "no such session" }, 404);
   });
+  v1.get("/plan/windows", (c) => c.json(getPlanWindows(db, parseRange(c.req.query()), Date.now())));
+  v1.get("/plan/snapshots", (c) => c.json(getPlanSnapshots(db, parseRange(c.req.query()))));
   v1.get("/sources", (c) => c.json(listSources(db)));
   v1.get("/prices", async (c) =>
     c.json(await getPrices(db, config.localPricesPath, ingest.localPricesError())),
@@ -115,6 +125,21 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
         400,
       );
     return c.json(r);
+  });
+  v1.post("/plan-snapshots", async (c) => {
+    const points = recordSnapshots(db, await jsonBody(c.req.raw), Date.now());
+    for (const p of points) bus.emit("plan.snapshot", p);
+    return c.json({ stored: points.length });
+  });
+  v1.post("/ingest/trigger", async (c) => {
+    const body = (await jsonBody(c.req.raw)) as { sessionId?: unknown } | null;
+    const id = body?.sessionId;
+    if (typeof id !== "string" || id.length < 1 || id.length > 200)
+      throw new BadRequest("sessionId must be a string of 1 to 200 characters");
+    ingest
+      .ingestSession(id)
+      .catch((e) => console.error(`ingest trigger ${id} failed: ${(e as Error).message}`));
+    return c.json({ queued: true }, 202);
   });
   v1.post("/sources/:id/rescan", (c) => {
     const id = Number(c.req.param("id"));

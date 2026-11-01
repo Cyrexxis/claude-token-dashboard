@@ -64,6 +64,23 @@ test("scanAll ingests the fixture; rescanSource re-reads it without new rows", a
   expect(svc.state().lastRunAt).toBeNumber();
 });
 
+test("ingestSession: known session picks up a new subagent file", async () => {
+  const { db, svc, config } = setup();
+  await svc.scanAll();
+  const dir = join(config.configPath, "..", "claude/projects/-home-user-demo/s1/subagents");
+  const text = readFileSync(join(dir, "agent-a1.jsonl"), "utf8").replaceAll("msg_sub", "msg_sub2");
+  writeFileSync(join(dir, "agent-a2.jsonl"), text);
+  const r = await svc.ingestSession("s1");
+  expect(r.newRequests).toBe(1);
+  expect(r.files).toBe(3);
+  expect(one(db, "select count(*) n from files")).toEqual({ n: 3 });
+});
+
+test("ingestSession: unknown session → incremental scan of every root", async () => {
+  const { svc } = setup();
+  expect(await svc.ingestSession("s1")).toMatchObject({ files: 2, newRequests: 3 });
+});
+
 test("rescanSource unknown id → null", async () => {
   expect(await setup().svc.rescanSource(999)).toBeNull();
 });

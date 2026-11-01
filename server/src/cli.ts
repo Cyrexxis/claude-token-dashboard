@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./api/app";
 import { type Config, loadConfig } from "./config";
+import { writeConnectionFile } from "./connection";
 import { openDatabase } from "./db/database";
 import { discoverRoots } from "./ingest/discovery";
 import { detectPlatform } from "./platform";
@@ -38,7 +39,9 @@ function serve(db: Database, config: Config, ingest: IngestService) {
     console.error(`port ${config.port} in use (set TD_PORT)`);
     process.exit(1);
   }
-  console.log(`dashboard: http://127.0.0.1:${config.port}`);
+  const url = `http://127.0.0.1:${config.port}`;
+  writeConnectionFile(config.connectionPath, url);
+  console.log(`dashboard: ${url} (connection file: ${config.connectionPath})`);
 }
 
 async function main(cmd: string | undefined) {

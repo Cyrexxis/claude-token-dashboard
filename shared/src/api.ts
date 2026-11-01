@@ -126,3 +126,37 @@ export type Status = {
 };
 
 export type ApiError = { error: string; message: string; errors?: string[] };
+
+/** One rate-limit window as the mod reports it (`session.measure`'s `rateLimits`). */
+export type PlanWindowReading = { kind: string; percentUsed: number; resetsAt?: string };
+export type PlanSnapshotBody = { windows: PlanWindowReading[]; sessionCostUsd?: number };
+export type IngestTriggerBody = { sessionId: string };
+export type PlanSnapshotPoint = {
+  ts: number;
+  kind: string;
+  percentUsed: number;
+  resetsAt: number | null;
+};
+export type PlanSnapshots = { points: PlanSnapshotPoint[] };
+export type PlanWindow = {
+  kind: string;
+  /** null for kinds without a known length (`spend_limit`). */
+  startMs: number | null;
+  resetsAt: number;
+  current: boolean;
+  peakPercent: number;
+  /** ts of the stored reading holding the peak (latest such). */
+  peakTs: number;
+  /** [start, min(resetsAt, now)) */
+  tokens: number;
+  costUsd: number;
+  /** [start, peakTs]: usage after the last reading can't inflate the per-1 % figures. */
+  tokensAtPeak: number;
+  costAtPeak: number;
+  usdPerPercent: number | null;
+  tokensPerPercent: number | null;
+  lowSignal: boolean;
+};
+export type PlanWindows = { current: PlanWindow[]; past: PlanWindow[] };
+/** `server.json`: how the mod finds the server (SPEC §11.3). */
+export type ConnectionFile = { url: string; protocol: number; start?: string[] };

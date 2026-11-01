@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { PlanSnapshotPoint } from "@td/shared";
 
 export type UsageUpdated = { sessionIds: string[]; from: number; to: number };
 export type IngestStatus = { running: boolean; files: number; errors: number };
@@ -9,4 +10,5 @@ export const bus = new EventEmitter<{
   "usage.updated": [UsageUpdated];
   "ingest.status": [IngestStatus];
   "prices.updated": [PricesUpdated];
+  "plan.snapshot": [PlanSnapshotPoint];
 }>();
