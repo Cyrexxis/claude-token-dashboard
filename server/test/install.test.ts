@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadConfig } from "../src/config";
-import { type InstallDeps, setup, unitFile, unitPath } from "../src/install";
+import { type InstallDeps, setup, uninstall, unitFile, unitPath, update } from "../src/install";
 
 const read = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 
@@ -177,4 +177,60 @@ test("missing Windows APPDATA fails before writing anything", () => {
   const d = fake({ respond: (c) => (c.startsWith("wslpath") ? { code: 1 } : undefined) });
   expect(() => setup(d)).toThrow("cannot find the Windows %APPDATA% folder");
   expect(existsSync(d.config.connectionPath)).toBe(false);
+});
+
+test("update requires an installed unit", () => {
+  expect(() => update(fake())).toThrow("not installed; run: bun run setup");
+});
+
+test("update installs, rebuilds, restarts, checks health", () => {
+  const d = fake();
+  setup(d);
+  d.calls.length = 0;
+  update(d);
+  expect(d.calls).toEqual([
+    "bun install",
+    "bun run build:web",
+    "systemctl --user restart token-dashboard",
+    `curl -sf http://127.0.0.1:${d.config.port}/api/health`,
+  ]);
+});
+
+test("uninstall removes files, unit and key", () => {
+  const d = fake();
+  mkdirSync(dirname(d.config.configPath), { recursive: true });
+  writeFileSync(d.config.configPath, JSON.stringify({ subscriptionMonthlyUsd: 100 }));
+  mkdirSync(dirname(d.config.dbPath), { recursive: true });
+  writeFileSync(d.config.dbPath, "db");
+  setup(d);
+  d.reload();
+  uninstall(d);
+  expect(existsSync(d.config.connectionPath)).toBe(false);
+  expect(existsSync(d.winPath)).toBe(false);
+  expect(existsSync(unitPath(d.env))).toBe(false);
+  expect(read(d.config.configPath)).toEqual({ subscriptionMonthlyUsd: 100 });
+  expect(d.calls).toContain("systemctl --user disable --now token-dashboard");
+  expect(existsSync(d.config.dbPath)).toBe(true);
+});
+
+test("uninstall when never installed does not fail", () => {
+  const d = fake({ respond: (c) => (c.includes("disable") ? { code: 1 } : undefined) });
+  uninstall(d);
+  expect(existsSync(d.config.configPath)).toBe(false);
+});
+
+test("setup announces the long steps before running them", () => {
+  const d = fake();
+  const seen: string[] = [];
+  d.log = (l) => seen.push(`log:${l}`);
+  const run = d.run;
+  d.run = (cmd, o) => {
+    seen.push(`run:${cmd.join(" ")}`);
+    return run(cmd, o);
+  };
+  setup(d);
+  const build = seen.indexOf("run:bun run build:web");
+  expect(seen[build - 1]).toBe("log:building the web UI…");
+  const restart = seen.indexOf("run:systemctl --user daemon-reload");
+  expect(seen[restart - 1]).toBe("log:installing and starting the token-dashboard service…");
 });

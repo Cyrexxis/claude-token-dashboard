@@ -1,5 +1,5 @@
 // Installs this checkout as a systemd user service (design: phase 4 local install).
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type Config, setConfigKey } from "./config";
 import { writeConnectionFile } from "./connection";
@@ -100,6 +100,7 @@ export function setup(d: InstallDeps): void {
   if (!active && !d.portFree(d.config.port))
     throw new Error(`port ${d.config.port} is in use; stop the other process or set TD_PORT`);
   const targets = chooseTargets(d);
+  d.log("building the web UI…");
   if (d.run(["bun", "run", "build:web"], { cwd: d.repoDir }).code !== 0)
     throw new Error("web build failed");
 
@@ -109,6 +110,7 @@ export function setup(d: InstallDeps): void {
   for (const t of targets) writeConnectionFile(t.path, url(d), t.extra);
   setConfigKey(d.config.configPath, "connectionFiles", chosen);
 
+  d.log(`installing and starting the ${SERVICE} service…`);
   const unit = unitPath(d.env);
   mkdirSync(dirname(unit), { recursive: true });
   writeFileSync(unit, unitFile(d));
@@ -118,4 +120,25 @@ export function setup(d: InstallDeps): void {
   waitHealthy(d);
   d.log(`dashboard: ${url(d)}`);
   for (const p of chosen) d.log(`connection file: ${p}`);
+}
+
+export function update(d: InstallDeps): void {
+  if (!existsSync(unitPath(d.env))) throw new Error("not installed; run: bun run setup");
+  d.log("installing dependencies and building the web UI…");
+  must(d, ["bun", "install"], d.repoDir);
+  must(d, ["bun", "run", "build:web"], d.repoDir);
+  must(d, ["systemctl", "--user", "restart", SERVICE]);
+  waitHealthy(d);
+  d.log(`updated: ${url(d)}`);
+}
+
+export function uninstall(d: InstallDeps): void {
+  d.run(["systemctl", "--user", "disable", "--now", SERVICE]); // fails when never installed
+  rmSync(unitPath(d.env), { force: true });
+  d.run(["systemctl", "--user", "daemon-reload"]);
+  for (const p of d.config.connectionFiles ?? [d.config.connectionPath]) rmSync(p, { force: true });
+  if (existsSync(d.config.configPath))
+    setConfigKey(d.config.configPath, "connectionFiles", undefined);
+  d.log(`removed the ${SERVICE} service and its connection files`);
+  d.log(`kept the database (${d.config.dbPath}) and config (${dirname(d.config.configPath)})`);
 }

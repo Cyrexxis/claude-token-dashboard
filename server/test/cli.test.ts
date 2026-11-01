@@ -94,6 +94,7 @@ test("unknown command exits 2", () => {
   const r = cli(env(), "nope");
   expect(r.code).toBe(2);
   expect(r.err).toContain("usage");
+  for (const c of ["setup", "update", "uninstall"]) expect(r.err).toContain(c);
 });
 
 test("serve writes every listed connection file", async () => {

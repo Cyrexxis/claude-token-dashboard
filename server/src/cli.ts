@@ -5,6 +5,7 @@ import { type Config, loadConfig } from "./config";
 import { writeConnectionFile } from "./connection";
 import { openDatabase } from "./db/database";
 import { discoverRoots } from "./ingest/discovery";
+import { type InstallDeps, setup, uninstall, update } from "./install";
 import { detectPlatform } from "./platform";
 import { loadPrices, syncPrices } from "./pricing/load";
 import { reprice } from "./pricing/reprice";
@@ -13,7 +14,8 @@ import { createIngestService, type IngestService } from "./service";
 import { getStats } from "./stats";
 import { startWatching } from "./watch/watcher";
 
-const USAGE = "usage: cli.ts <scan|watch|serve|stats|reprice>";
+const USAGE = "usage: cli.ts <scan|watch|serve|stats|reprice|setup|update|uninstall>";
+const INSTALL = { setup, update, uninstall };
 
 async function prepare() {
   const config = loadConfig();
@@ -51,10 +53,50 @@ function serve(db: Database, config: Config, ingest: IngestService) {
   console.log(`dashboard: ${url} (connection files: ${files.join(", ")})`);
 }
 
+function portFree(port: number): boolean {
+  try {
+    Bun.serve({ hostname: "127.0.0.1", port, fetch: () => new Response() }).stop(true);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") return false;
+    throw e;
+  }
+}
+
+function installDeps(): InstallDeps {
+  return {
+    env: process.env,
+    config: loadConfig(),
+    platform: detectPlatform(),
+    repoDir: fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, ""),
+    bunPath: process.execPath,
+    run: (cmd, opts) => {
+      const r = Bun.spawnSync(cmd, { cwd: opts?.cwd, stderr: "pipe" });
+      return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+    },
+    ask: prompt,
+    log: console.log,
+    portFree,
+    sleep: Bun.sleepSync,
+  };
+}
+
 async function main(cmd: string | undefined) {
-  if (!cmd || !["scan", "watch", "serve", "stats", "reprice"].includes(cmd)) {
+  if (
+    !cmd ||
+    !["scan", "watch", "serve", "stats", "reprice", ...Object.keys(INSTALL)].includes(cmd)
+  ) {
     console.error(USAGE);
     process.exit(2);
+  }
+  if (cmd in INSTALL) {
+    try {
+      INSTALL[cmd as keyof typeof INSTALL](installDeps());
+      return;
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
   }
   const { config, db, table } = await prepare();
 

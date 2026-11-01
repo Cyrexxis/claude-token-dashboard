@@ -18,6 +18,9 @@
     "stats": "bun server/src/cli.ts stats",
     "reprice": "bun server/src/cli.ts reprice",
     "serve": "bun server/src/cli.ts serve",
+    "setup": "bun server/src/cli.ts setup",
+    "update": "bun server/src/cli.ts update",
+    "uninstall": "bun server/src/cli.ts uninstall",
     "build:web": "bun run --cwd web build",
     "dev": "bun run --filter '@td/server' --filter '@td/web' dev"
   },
