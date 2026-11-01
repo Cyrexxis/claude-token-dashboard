@@ -17,6 +17,8 @@ export type Req = Partial<{
   web_fetch: number;
   speed: string;
   cost_usd: number | null;
+  agent_id: string;
+  unpriced: number;
 }>;
 
 let n = 0;
