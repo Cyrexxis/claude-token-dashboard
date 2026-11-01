@@ -1,0 +1,3 @@
+[test]
+# plugin/ tests run inside the engine: bun run test:mod
+pathIgnorePatterns = ["plugin/**"]

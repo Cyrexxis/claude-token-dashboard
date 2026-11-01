@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "test": "bun test",
+    "test:mod": "claude plugin test ./plugin",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "biome check .",
     "check:network": "bun scripts/check-network.ts",

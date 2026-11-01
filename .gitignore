@@ -4,3 +4,4 @@ node_modules/
 *.db-*
 docs/superpowers/plans/
 web/dist/
+plugin/.claude-plugin/types/
