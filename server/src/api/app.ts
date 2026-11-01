@@ -20,6 +20,7 @@ import {
   getTimeseries,
   listSessions,
   listSources,
+  listWindowSessions,
   parseRange,
 } from "./queries";
 
@@ -108,6 +109,10 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
       : c.json<ApiError>({ error: "not_found", message: "no such session" }, 404);
   });
   v1.get("/plan/windows", (c) => c.json(getPlanWindows(db, parseRange(c.req.query()), Date.now())));
+  v1.get("/plan/sessions", (c) => {
+    const q = c.req.query();
+    return c.json(listWindowSessions(db, Number(q.fromMs), Number(q.toMs)));
+  });
   v1.get("/plan/snapshots", (c) => c.json(getPlanSnapshots(db, parseRange(c.req.query()))));
   v1.get("/sources", (c) => c.json(listSources(db)));
   v1.get("/prices", async (c) =>

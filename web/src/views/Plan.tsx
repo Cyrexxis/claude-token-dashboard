@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { PlanSnapshots, PlanWindow, PlanWindows } from "@td/shared";
+import type { PlanSnapshots, PlanWindow, PlanWindows, SessionList } from "@td/shared";
 import { useEffect, useState } from "react";
 import {
   CartesianGrid,
@@ -14,8 +14,9 @@ import {
 } from "recharts";
 import type { ViewProps } from "../App";
 import { api } from "../api";
+import { SessionTable } from "../components/SessionTable";
 import { seriesColor } from "../components/TimeChart";
-import { fmtDuration, fmtTokens, fmtUsd } from "../format";
+import { fmtDuration, fmtTokens, fmtUsd, localDay } from "../format";
 
 const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "Weekly" };
 export const kindLabel = (kind: string) => KIND_LABEL[kind] ?? kind;
@@ -66,8 +67,46 @@ function WindowCard({ w, now }: { w: PlanWindow; now: number }) {
   );
 }
 
-function Timeline({ data, resets }: { data: PlanSnapshots; resets: number[] }) {
-  const kinds = [...new Set(data.points.map((p) => p.kind))];
+type Kind = "five_hour" | "seven_day";
+const KINDS: Kind[] = ["five_hour", "seven_day"];
+
+function WindowTabs({ kind, onChange }: { kind: Kind; onChange: (k: Kind) => void }) {
+  return (
+    <div className="tabs" role="tablist">
+      {KINDS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="tab"
+          aria-selected={k === kind}
+          onClick={() => onChange(k)}
+        >
+          {kindLabel(k)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Snapshots covering the window; the API filters by local day, so this over-fetches a little. */
+function useWindowPoints(w: PlanWindow | undefined) {
+  const start = w?.startMs ?? 0;
+  const end = w?.resetsAt ?? 0;
+  const range = { from: localDay(new Date(start)), to: localDay(new Date(end)) };
+  return useQuery({
+    queryKey: ["plan", "snapshots", range],
+    queryFn: () => api<PlanSnapshots>("/plan/snapshots", range),
+    enabled: !!w,
+    select: (d) => d.points.filter((p) => p.ts >= start && p.ts <= end),
+  });
+}
+
+/** The 5-hour view also shows the weekly line; the weekly view shows only itself. */
+function Timeline({ w, now }: { w: PlanWindow; now: number }) {
+  const points = useWindowPoints(w);
+  if (points.error) return <p className="error">{points.error.message}</p>;
+  if (!points.data) return <p className="muted">Loading…</p>;
+  const shown = w.kind === "five_hour" ? KINDS : [w.kind];
   const axis = {
     stroke: "var(--axis)",
     tick: { fill: "var(--muted)", fontSize: 12 },
@@ -82,7 +121,7 @@ function Timeline({ data, resets }: { data: PlanSnapshots; resets: number[] }) {
           dataKey="ts"
           type="number"
           scale="time"
-          domain={["dataMin", "dataMax"]}
+          domain={[w.startMs ?? "dataMin", w.resetsAt]}
           tickFormatter={when}
           allowDuplicatedCategory={false}
         />
@@ -93,17 +132,20 @@ function Timeline({ data, resets }: { data: PlanSnapshots; resets: number[] }) {
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)" }}
         />
         <Legend />
-        {resets.map((r) => (
-          <ReferenceLine key={r} x={r} stroke="var(--muted)" strokeDasharray="3 3" />
-        ))}
-        {kinds.map((k, i) => (
+        <ReferenceLine
+          x={now}
+          stroke="var(--muted)"
+          strokeDasharray="3 3"
+          label={{ value: "now", position: "insideTopRight", fill: "var(--muted)", fontSize: 11 }}
+        />
+        {shown.map((k) => (
           <Line
             key={k}
-            data={data.points.filter((p) => p.kind === k)}
+            data={points.data.filter((p) => p.kind === k)}
             dataKey="percentUsed"
             name={kindLabel(k)}
             type="stepAfter"
-            stroke={seriesColor(k, i)}
+            stroke={seriesColor(k, KINDS.indexOf(k as Kind))}
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
@@ -114,28 +156,46 @@ function Timeline({ data, resets }: { data: PlanSnapshots; resets: number[] }) {
   );
 }
 
+function WindowSessions({ w }: { w: PlanWindow }) {
+  const params = { fromMs: w.startMs ?? 0, toMs: w.resetsAt };
+  const list = useQuery({
+    queryKey: ["plan", "sessions", params],
+    queryFn: () => api<SessionList>("/plan/sessions", params),
+  });
+  if (list.error) return <p className="error">{list.error.message}</p>;
+  if (!list.data) return <p className="muted">Loading…</p>;
+  if (!list.data.items.length) return <p className="muted empty">No sessions in this window.</p>;
+  return (
+    <>
+      <SessionTable items={list.data.items} />
+      <p className="muted note">
+        Tokens and cost count only requests inside the window; duration is the whole session.
+      </p>
+    </>
+  );
+}
+
 const perPct = (v: number | null, f: (n: number) => string) => (v === null ? "—" : f(v));
 
 export function Plan({ range }: ViewProps) {
   const now = useNow();
   const windows = usePlanWindows(range);
-  const points = useQuery({
-    queryKey: ["plan", "snapshots", range],
-    queryFn: () => api<PlanSnapshots>("/plan/snapshots", range),
-  });
+  const [chartKind, setChartKind] = useState<Kind>("five_hour");
+  const [tableKind, setTableKind] = useState<Kind>("five_hour");
   if (windows.error) return <p className="error">{windows.error.message}</p>;
-  if (!windows.data || !points.data) return <p className="muted">Loading…</p>;
+  if (!windows.data) return <p className="muted">Loading…</p>;
   const { current, past } = windows.data;
-  if (!current.length && !past.length && !points.data.points.length)
+  if (!current.length && !past.length)
     return (
       <p className="muted empty">
         No plan readings yet. Start a Claude Code session in WSL with the mod loaded (
         <code>claude --plugin-dir ./plugin</code>).
       </p>
     );
-  const resets = [...new Set(points.data.points.flatMap((p) => p.resetsAt ?? []))].filter(
-    (r) => r <= (points.data.points.at(-1)?.ts ?? 0),
-  );
+  const win = (k: Kind) => current.find((w) => w.kind === k && w.startMs !== null);
+  const chartWin = win(chartKind);
+  const tableWin = win(tableKind);
+  const none = (k: Kind) => <p className="muted empty">No current {kindLabel(k)} window.</p>;
   return (
     <>
       {current.length > 0 && (
@@ -146,12 +206,18 @@ export function Plan({ range }: ViewProps) {
         </div>
       )}
       <section className="card">
-        <h2>Plan usage over time</h2>
-        {points.data.points.length ? (
-          <Timeline data={points.data} resets={resets} />
-        ) : (
-          <p className="muted empty">No readings in this period.</p>
-        )}
+        <div className="toolbar">
+          <h2 style={{ margin: 0, flex: 1 }}>Plan usage in the current window</h2>
+          <WindowTabs kind={chartKind} onChange={setChartKind} />
+        </div>
+        {chartWin ? <Timeline w={chartWin} now={now} /> : none(chartKind)}
+      </section>
+      <section className="card">
+        <div className="toolbar">
+          <h2 style={{ margin: 0, flex: 1 }}>Sessions in the current window</h2>
+          <WindowTabs kind={tableKind} onChange={setTableKind} />
+        </div>
+        {tableWin ? <WindowSessions w={tableWin} /> : none(tableKind)}
       </section>
       <section className="card">
         <h2>Past windows</h2>

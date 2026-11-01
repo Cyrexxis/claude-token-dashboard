@@ -253,24 +253,29 @@ type Agg = Tokens & {
   agents: number;
 };
 
-/** Adds request totals and the main model to session records; aggregates only the given sessions. */
-function withTotals(db: Database, records: SessionRecord[]): SessionRow[] {
+/** Adds request totals and the main model to session records; aggregates only the given sessions (and only requests in `win`, if given). */
+function withTotals(
+  db: Database,
+  records: SessionRecord[],
+  win?: { fromMs: number; toMs: number },
+): SessionRow[] {
   if (!records.length) return [];
   const ids = records.map((r) => r.id);
-  const marks = ids.map(() => "?").join(", ");
+  const where = `session_id IN (${ids.map(() => "?").join(", ")})${win ? " AND ts >= ? AND ts < ?" : ""}`;
+  const args = win ? [...ids, win.fromMs, win.toMs] : ids;
   const aggs = db
-    .query<Agg, string[]>(
+    .query<Agg, (string | number)[]>(
       `SELECT session_id sessionId, COUNT(*) requests, ${TOKEN_COLS}, TOTAL(cost_usd) costUsd,
          TOTAL(unpriced) unpriced, COUNT(DISTINCT agent_id) agents
-       FROM requests WHERE session_id IN (${marks}) GROUP BY session_id`,
+       FROM requests WHERE ${where} GROUP BY session_id`,
     )
-    .all(...ids);
+    .all(...args);
   const models = db
-    .query<{ sessionId: string; model: string | null }, string[]>(
-      `SELECT session_id sessionId, model FROM requests WHERE session_id IN (${marks})
+    .query<{ sessionId: string; model: string | null }, (string | number)[]>(
+      `SELECT session_id sessionId, model FROM requests WHERE ${where}
        GROUP BY session_id, model ORDER BY TOTAL(output)`,
     )
-    .all(...ids);
+    .all(...args);
   const byId = new Map(aggs.map((a) => [a.sessionId, a]));
   const model = new Map(models.map((m) => [m.sessionId, m.model])); // most output wins (last)
   return records.map(({ ccVersion, tag, agentName, ...r }) => {
@@ -318,6 +323,19 @@ export function listSessions(
     )
     .all({ ...params, limit, offset });
   return { total, items: withTotals(db, records) };
+}
+
+/** Sessions with requests in [fromMs, toMs), most expensive first; totals count only those requests. */
+export function listWindowSessions(db: Database, fromMs: number, toMs: number): SessionList {
+  if (!Number.isSafeInteger(fromMs) || !Number.isSafeInteger(toMs) || fromMs >= toMs)
+    throw new BadRequest("fromMs and toMs must be integers with fromMs < toMs");
+  const records = db
+    .query<SessionRecord, [number, number]>(
+      `${SESSION_SELECT} WHERE s.id IN (SELECT session_id FROM requests WHERE ts >= ?1 AND ts < ?2)`,
+    )
+    .all(fromMs, toMs);
+  const items = withTotals(db, records, { fromMs, toMs }).sort((a, b) => b.costUsd - a.costUsd);
+  return { total: items.length, items };
 }
 
 const TOKENS_OF = (r: Tokens): Tokens => ({

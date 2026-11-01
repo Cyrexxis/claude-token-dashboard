@@ -13,6 +13,7 @@ import {
   getTimeseries,
   listSessions,
   listSources,
+  listWindowSessions,
   parseRange,
 } from "../src/api/queries";
 import { openDatabase, SCHEMA_VERSION } from "../src/db/database";
@@ -292,6 +293,15 @@ test("sessions: range overlap, newest first, paging, totals", () => {
     agents: 1,
     tokens: { input: 7, output: 55 },
   });
+});
+
+test("window sessions: only requests inside the window count, most expensive first", () => {
+  const d = sessions3();
+  const w = listWindowSessions(d, at("2026-10-11"), at("2026-10-15"));
+  expect(w.items.map((s) => s.id)).toEqual(["s1", "s2"]);
+  expect(w.items[0]).toMatchObject({ requests: 2, costUsd: 2.5, model: "b", agents: 1 });
+  expect(listWindowSessions(d, at("2026-10-16"), at("2026-10-17")).total).toBe(0);
+  expect(() => listWindowSessions(d, Number.NaN, 1)).toThrow(BadRequest);
 });
 
 test("session with only unpriced requests → costUsd 0, unpricedRequests > 0", () => {

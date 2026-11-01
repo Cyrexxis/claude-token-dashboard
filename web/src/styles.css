@@ -194,6 +194,20 @@ button.primary {
   align-items: center;
   margin-bottom: 12px;
 }
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+.tabs button {
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+.tabs button[aria-selected="true"] {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
 .table-wrap {
   overflow-x: auto;
 }
