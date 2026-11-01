@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**/*.ts", "**/*.json", "!**/node_modules"]
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json", "!**/node_modules"]
   },
   "formatter": {
     "enabled": true,

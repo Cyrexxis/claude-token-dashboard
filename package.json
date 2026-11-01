@@ -4,18 +4,21 @@
   "type": "module",
   "workspaces": [
     "shared",
-    "server"
+    "server",
+    "web"
   ],
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "biome check .",
     "check:network": "bun scripts/check-network.ts",
     "scan": "bun server/src/cli.ts scan",
     "watch": "bun server/src/cli.ts watch",
     "stats": "bun server/src/cli.ts stats",
     "reprice": "bun server/src/cli.ts reprice",
-    "serve": "bun server/src/cli.ts serve"
+    "serve": "bun server/src/cli.ts serve",
+    "build:web": "bun run --cwd web build",
+    "dev": "bun run --filter '@td/server' --filter '@td/web' dev"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

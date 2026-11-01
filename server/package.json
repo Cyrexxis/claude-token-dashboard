@@ -5,5 +5,8 @@
   "dependencies": {
     "@td/shared": "workspace:*",
     "hono": "^4.13.16"
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts serve"
   }
 }

@@ -3,3 +3,4 @@ node_modules/
 *.db
 *.db-*
 docs/superpowers/plans/
+web/dist/
