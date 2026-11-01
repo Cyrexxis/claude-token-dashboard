@@ -40,3 +40,14 @@ test("prices.updated touches every cost-bearing key", () => {
 test("malformed usage payload does not throw", () => {
   expect(keysToInvalidate("usage.updated", null)).toContainEqual(["summary"]);
 });
+
+test("plan.snapshot invalidates plan only", () => {
+  expect(
+    keysToInvalidate("plan.snapshot", { ts: 1, kind: "five_hour", percentUsed: 3, resetsAt: 2 }),
+  ).toEqual([["plan"]]);
+});
+
+test("usage.updated and prices.updated also invalidate plan (window cost and tokens change)", () => {
+  expect(keysToInvalidate("usage.updated", { sessionIds: [] })).toContainEqual(["plan"]);
+  expect(keysToInvalidate("prices.updated", { hash: "x" })).toContainEqual(["plan"]);
+});

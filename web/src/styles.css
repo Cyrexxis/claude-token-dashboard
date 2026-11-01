@@ -283,3 +283,22 @@ textarea {
   align-items: center;
   gap: 6px;
 }
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--grid);
+  margin: 6px 0 4px;
+  overflow: hidden;
+}
+.bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+tr.faded {
+  opacity: 0.55;
+}
+.note {
+  font-size: 12px;
+  margin: 10px 0 0;
+}

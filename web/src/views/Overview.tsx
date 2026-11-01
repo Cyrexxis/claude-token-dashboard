@@ -4,7 +4,8 @@ import type { ViewProps } from "../App";
 import { api } from "../api";
 import { StatTile } from "../components/StatTile";
 import { TimeChart } from "../components/TimeChart";
-import { autoBucket, fmtTokens, fmtUsd, rangeDays } from "../format";
+import { autoBucket, fmtDuration, fmtTokens, fmtUsd, rangeDays } from "../format";
+import { kindLabel, useNow, usePlanWindows } from "./Plan";
 
 const DAYS_PER_MONTH = 30.4375;
 
@@ -19,6 +20,8 @@ export function Overview({ range }: ViewProps) {
     queryFn: () =>
       api<Timeseries>("/timeseries", { ...range, metric: "tokens", group: "type", bucket }),
   });
+  const plan = usePlanWindows(range);
+  const now = useNow();
   const s = summary.data;
   if (summary.error) return <p className="error">{summary.error.message}</p>;
   if (!s) return <p className="muted">Loading…</p>;
@@ -49,6 +52,14 @@ export function Overview({ range }: ViewProps) {
             sub={`${fmtUsd(sub)} of plan for ${days} days`}
           />
         )}
+        {plan.data?.current.map((w) => (
+          <StatTile
+            key={`${w.kind}-${w.resetsAt}`}
+            label={`${kindLabel(w.kind)} plan`}
+            value={`${w.peakPercent.toFixed(1).replace(/\.0$/, "")} %`}
+            sub={`resets in ${fmtDuration(Math.max(w.resetsAt - now, 0))}`}
+          />
+        ))}
         <StatTile label="Requests" value={s.requests.toLocaleString()} />
         <StatTile label="Sessions" value={s.sessions.toLocaleString()} />
         <StatTile
@@ -57,6 +68,12 @@ export function Overview({ range }: ViewProps) {
           sub="cache read ÷ all input"
         />
       </div>
+      {plan.data && !plan.data.current.length && (
+        <p className="muted note">
+          No current plan window: load the mod to see plan usage (see the <a href="#/plan">Plan</a>{" "}
+          page).
+        </p>
+      )}
       <section className="card">
         <h2>Tokens by type</h2>
         {series.data ? (
