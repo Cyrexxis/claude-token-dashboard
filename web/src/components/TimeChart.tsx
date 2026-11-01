@@ -31,6 +31,8 @@ type Props = {
   height?: number;
   /** Series keys hidden until the legend toggles them on. */
   defaultHidden?: string[];
+  /** Bucket → axis and tooltip text; defaults to "Oct 14". */
+  label?: (bucket: string) => string;
 };
 
 type TipProps = {
@@ -38,13 +40,14 @@ type TipProps = {
   label?: string;
   payload?: { name: string; value: number; color: string }[];
   format: (n: number) => string;
+  fmtLabel: (bucket: string) => string;
 };
-function Tip({ active, label, payload, format }: TipProps) {
+function Tip({ active, label, payload, format, fmtLabel }: TipProps) {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((a, p) => a + (p.value ?? 0), 0);
   return (
     <div className="chart-tip">
-      <div className="tip-head">{label && shortDay(label)}</div>
+      <div className="tip-head">{label && fmtLabel(label)}</div>
       {[...payload].reverse().map((p) => (
         <div key={p.name} className="tip-row">
           <span className="swatch" style={{ background: p.color }} />
@@ -71,6 +74,7 @@ export function TimeChart({
   marks = [],
   height = 300,
   defaultHidden = [],
+  label = shortDay,
 }: Props) {
   const [hidden, setHidden] = useState(() => new Set(defaultHidden));
   if (!data.series.length) return <p className="muted empty">No data in this period.</p>;
@@ -99,10 +103,10 @@ export function TimeChart({
   const common = (
     <>
       <CartesianGrid vertical={false} stroke="var(--grid)" />
-      <XAxis dataKey="bucket" tickFormatter={shortDay} minTickGap={24} {...axis} />
+      <XAxis dataKey="bucket" tickFormatter={label} minTickGap={24} {...axis} />
       <YAxis tickFormatter={format} width={64} axisLine={false} {...axis} />
       <Tooltip
-        content={<Tip format={format} />}
+        content={<Tip format={format} fmtLabel={label} />}
         cursor={{ fill: "var(--hover)", stroke: "var(--axis)" }}
       />
       {data.series.length > 1 && (

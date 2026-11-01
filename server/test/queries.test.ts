@@ -11,6 +11,7 @@ import {
   getStatus,
   getSummary,
   getTimeseries,
+  getWindowTimeseries,
   listSessions,
   listSources,
   listWindowSessions,
@@ -493,4 +494,40 @@ test("timeseries without from never starts before 1970, whatever the data says",
     to: "1970-03-31",
   });
   expect(t.buckets).toEqual(["1970-01-01", "1970-02-01", "1970-03-01"]);
+});
+
+test("window timeseries: requests land in their slot; type, project and model groups; bad args", () => {
+  const d = db();
+  const t0 = at("2026-10-14");
+  const M = 60_000;
+  session(d, "s1", "-proj", "/home/u/proj");
+  insertRequest(d, { session_id: "s1", ts: t0, input: 1, cost_usd: 1, cost_input: 1 });
+  insertRequest(d, { session_id: "s1", ts: t0 + 4 * M, output: 2, cost_usd: 2, cost_output: 2 });
+  insertRequest(d, { ts: t0 + 5 * M, input: 4 });
+  insertRequest(d, { ts: t0 + 15 * M, input: 99 }); // at toMs: excluded
+  const q = { fromMs: t0, toMs: t0 + 15 * M, stepMs: 5 * M } as const;
+  const byType = getWindowTimeseries(d, { ...q, metric: "tokens", group: "type" });
+  expect(byType.buckets).toEqual([t0, t0 + 5 * M, t0 + 10 * M].map(String));
+  const vals = Object.fromEntries(byType.series.map((s) => [s.key, s.values]));
+  expect(vals.input).toEqual([1, 4, 0]);
+  expect(vals.output).toEqual([2, 0, 0]);
+  const cost = getWindowTimeseries(d, { ...q, metric: "cost", group: "type" });
+  expect(cost.series.find((s) => s.key === "output")?.values).toEqual([2, 0, 0]);
+  const byProject = getWindowTimeseries(d, { ...q, metric: "tokens", group: "project" });
+  expect(byProject.series.map((s) => [s.label, s.values])).toEqual([
+    ["(none)", [0, 4, 0]],
+    ["proj", [3, 0, 0]],
+  ]);
+  expect(getWindowTimeseries(d, { ...q, metric: "requests", group: "model" }).series).toEqual([
+    { key: "claude-opus-5-5", label: "claude-opus-5-5", values: [2, 1, 0] },
+  ]);
+  for (const bad of [
+    { ...q, stepMs: 0 },
+    { ...q, toMs: q.fromMs },
+    { ...q, fromMs: Number.NaN },
+    { ...q, stepMs: 1 }, // too many buckets
+  ])
+    expect(() => getWindowTimeseries(d, { ...bad, metric: "tokens", group: "type" })).toThrow(
+      BadRequest,
+    );
 });

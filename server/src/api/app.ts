@@ -18,6 +18,7 @@ import {
   getStatus,
   getSummary,
   getTimeseries,
+  getWindowTimeseries,
   listSessions,
   listSources,
   listWindowSessions,
@@ -112,6 +113,18 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
   v1.get("/plan/sessions", (c) => {
     const q = c.req.query();
     return c.json(listWindowSessions(db, Number(q.fromMs), Number(q.toMs)));
+  });
+  v1.get("/plan/timeseries", (c) => {
+    const q = c.req.query();
+    return c.json(
+      getWindowTimeseries(db, {
+        metric: oneOf<Metric>("metric", q.metric, ["tokens", "cost", "requests"], "tokens"),
+        group: oneOf<Group>("group", q.group, ["type", "model", "source", "project"], "type"),
+        fromMs: Number(q.fromMs),
+        toMs: Number(q.toMs),
+        stepMs: Number(q.stepMs),
+      }),
+    );
   });
   v1.get("/plan/snapshots", (c) => c.json(getPlanSnapshots(db, parseRange(c.req.query()))));
   v1.get("/sources", (c) => c.json(listSources(db)));

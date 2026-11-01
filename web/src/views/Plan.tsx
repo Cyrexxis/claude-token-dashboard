@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  Group,
   PlanSnapshotPoint,
   PlanSnapshots,
   PlanWindow,
   PlanWindows,
   SessionList,
+  Timeseries,
 } from "@td/shared";
 import { useEffect, useState } from "react";
 import {
@@ -21,7 +23,7 @@ import {
 import type { ViewProps } from "../App";
 import { api } from "../api";
 import { SessionTable } from "../components/SessionTable";
-import { seriesColor } from "../components/TimeChart";
+import { seriesColor, TimeChart } from "../components/TimeChart";
 import { fmtDuration, fmtTokens, fmtUsd, localDay } from "../format";
 
 const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "Weekly" };
@@ -219,6 +221,91 @@ function WindowSessions({ w }: { w: PlanWindow }) {
   );
 }
 
+const STEP_MS: Record<Kind, number> = { five_hour: 5 * 60_000, seven_day: 3 * 3_600_000 };
+const GROUPS: [Group, string][] = [
+  ["type", "Token type"],
+  ["model", "Model"],
+  ["source", "Source"],
+  ["project", "Project"],
+];
+const slotLabel = (kind: Kind) => (b: string) =>
+  kind === "five_hour"
+    ? hourTick(Number(b))
+    : new Date(Number(b)).toLocaleString(undefined, {
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+/** Tokens or cost in the current window, 5-minute slots for 5-hour, 3-hour slots for weekly. */
+function WindowSeries({ current }: { current: PlanWindow[] }) {
+  const [kind, setKind] = useState<Kind>("five_hour");
+  const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
+  const [group, setGroup] = useState<Group>("type");
+  const w = current.find((c) => c.kind === kind && c.startMs !== null);
+  const params = w && {
+    fromMs: w.startMs ?? 0,
+    toMs: w.resetsAt,
+    stepMs: STEP_MS[kind],
+    metric,
+    group,
+  };
+  const q = useQuery({
+    queryKey: ["plan", "timeseries", params],
+    queryFn: () => api<Timeseries>("/plan/timeseries", params),
+    enabled: !!params,
+  });
+  return (
+    <section className="card">
+      <div className="toolbar">
+        <h2 style={{ margin: 0, flex: 1 }}>
+          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the current window
+        </h2>
+        <div className="tabs" role="tablist">
+          {(["tokens", "cost"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={m === metric}
+              onClick={() => setMetric(m)}
+            >
+              {m === "tokens" ? "Tokens" : "Cost"}
+            </button>
+          ))}
+        </div>
+        <label>
+          Group by{" "}
+          <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
+            {GROUPS.map(([g, l]) => (
+              <option key={g} value={g}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <WindowTabs kind={kind} onChange={setKind} />
+      </div>
+      {!w && <p className="muted empty">No current {kindLabel(kind)} window.</p>}
+      {q.error && <p className="error">{q.error.message}</p>}
+      {w && !q.data && !q.error && <p className="muted">Loading…</p>}
+      {w && q.data && (
+        <TimeChart
+          // Remount per metric so the cache-read default applies to tokens only.
+          key={metric}
+          data={q.data}
+          kind="bar"
+          height={320}
+          format={metric === "cost" ? fmtUsd : fmtTokens}
+          label={slotLabel(kind)}
+          // Cache reads dwarf every other type and would flatten the chart.
+          defaultHidden={metric === "tokens" ? ["cacheRead"] : []}
+        />
+      )}
+    </section>
+  );
+}
+
 const perPct = (v: number | null, f: (n: number) => string) => (v === null ? "—" : f(v));
 
 export function Plan({ range }: ViewProps) {
@@ -256,6 +343,7 @@ export function Plan({ range }: ViewProps) {
         </div>
         {chartWin ? <Timeline w={chartWin} current={current} now={now} /> : none(chartKind)}
       </section>
+      <WindowSeries current={current} />
       <section className="card">
         <div className="toolbar">
           <h2 style={{ margin: 0, flex: 1 }}>Sessions in the current window</h2>

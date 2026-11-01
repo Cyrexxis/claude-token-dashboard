@@ -157,59 +157,56 @@ function labels(db: Database, group: Exclude<Group, "type">, keys: string[]): Ma
   return m;
 }
 
-export function getTimeseries(
-  db: Database,
-  q: { metric: Metric; group: Group; bucket: Bucket } & Range,
-): Timeseries {
-  if (q.group === "type" && q.metric === "requests")
-    throw new BadRequest("group=type is only available for metric=tokens or cost");
-  const range = { from: q.from, to: q.to };
-  const earliest = db
-    .query<{ day: string | null }, []>("SELECT MIN(day) day FROM daily_rollups")
-    .get()?.day;
-  const to = q.to ?? localDay(new Date());
-  const start = earliest && earliest < MIN_DAY ? MIN_DAY : earliest; // bogus old timestamps
-  const from = q.from ?? start ?? to;
-  const buckets = from <= to ? bucketList(from, to, q.bucket) : [];
-  const index = new Map(buckets.map((b, i) => [b, i]));
-  const at = (day: string) => index.get(bucketOf(day, q.bucket));
+/** Where series rows come from: `table` is a FROM clause (with its WHERE), `key` the bucket expression. */
+type SeriesSource = {
+  table: string;
+  key: string;
+  params: Record<string, string | number | null>;
+  at: (key: string | number) => number | undefined;
+};
 
-  if (q.group === "type") {
+function buildSeries(
+  db: Database,
+  metric: Metric,
+  group: Group,
+  buckets: string[],
+  src: SeriesSource,
+): Timeseries["series"] {
+  if (group === "type" && metric === "requests")
+    throw new BadRequest("group=type is only available for metric=tokens or cost");
+  if (group === "type") {
     const types = TYPE_SERIES.flatMap(([key, label, tokenCol, costCol]) => {
-      const col = q.metric === "cost" ? costCol : tokenCol;
+      const col = metric === "cost" ? costCol : tokenCol;
       return col ? [{ key, label, col }] : [];
     });
     const rows = db
-      .query<Record<string, number> & { day: string }, [Range]>(
-        `SELECT day, ${types.map((t) => `TOTAL(${t.col}) ${t.key}`).join(", ")}
-         FROM daily_rollups WHERE ${DAY_WHERE} GROUP BY day`,
+      .query<Record<string, number> & { b: string | number }, [SeriesSource["params"]]>(
+        `SELECT ${src.key} b, ${types.map((t) => `TOTAL(${t.col}) ${t.key}`).join(", ")}
+         FROM ${src.table} GROUP BY b`,
       )
-      .all(range);
+      .all(src.params);
     const series = types.map(({ key, label }) => ({
       key,
       label,
       values: buckets.map(() => 0),
     }));
     for (const row of rows) {
-      const i = at(row.day);
+      const i = src.at(row.b);
       if (i !== undefined) for (const s of series) s.values[i] += row[s.key];
     }
     // Web search only shows up when something was searched.
-    return {
-      buckets,
-      series: series.filter((s) => s.key !== "webSearch" || s.values.some(Boolean)),
-    };
+    return series.filter((s) => s.key !== "webSearch" || s.values.some(Boolean));
   }
 
   const rows = db
-    .query<{ day: string; k: string; v: number }, [Range]>(
-      `SELECT day, ${GROUP_KEY[q.group]} k, TOTAL(${VALUE[q.metric]}) v
-       FROM daily_rollups WHERE ${DAY_WHERE} GROUP BY day, k`,
+    .query<{ b: string | number; k: string; v: number }, [SeriesSource["params"]]>(
+      `SELECT ${src.key} b, ${GROUP_KEY[group]} k, TOTAL(${VALUE[metric]}) v
+       FROM ${src.table} GROUP BY b, k`,
     )
-    .all(range);
+    .all(src.params);
   const byKey = new Map<string, number[]>();
   for (const row of rows) {
-    const i = at(row.day);
+    const i = src.at(row.b);
     if (i === undefined) continue;
     const values = byKey.get(row.k) ?? buckets.map(() => 0);
     byKey.set(row.k, values);
@@ -219,7 +216,7 @@ export function getTimeseries(
   const ranked = [...byKey].sort((a, b) => total(b[1]) - total(a[1]) || a[0].localeCompare(b[0]));
   const names = labels(
     db,
-    q.group,
+    group,
     ranked.map(([k]) => k),
   );
   const series = ranked
@@ -232,6 +229,54 @@ export function getTimeseries(
       label: "Other",
       values: buckets.map((_, i) => rest.reduce((a, [, v]) => a + v[i], 0)),
     });
+  return series;
+}
+
+export function getTimeseries(
+  db: Database,
+  q: { metric: Metric; group: Group; bucket: Bucket } & Range,
+): Timeseries {
+  const earliest = db
+    .query<{ day: string | null }, []>("SELECT MIN(day) day FROM daily_rollups")
+    .get()?.day;
+  const to = q.to ?? localDay(new Date());
+  const start = earliest && earliest < MIN_DAY ? MIN_DAY : earliest; // bogus old timestamps
+  const from = q.from ?? start ?? to;
+  const buckets = from <= to ? bucketList(from, to, q.bucket) : [];
+  const index = new Map(buckets.map((b, i) => [b, i]));
+  const series = buildSeries(db, q.metric, q.group, buckets, {
+    table: `daily_rollups WHERE ${DAY_WHERE}`,
+    key: "day",
+    params: { from: q.from, to: q.to },
+    at: (day) => index.get(bucketOf(String(day), q.bucket)),
+  });
+  return { buckets, series };
+}
+
+const MAX_WINDOW_BUCKETS = 1000;
+
+/**
+ * Raw requests in [fromMs, toMs) in `stepMs` slots; buckets are slot starts as epoch-ms strings.
+ * Reads `requests` (rollups are daily), shaped like daily_rollups so the same columns work.
+ */
+export function getWindowTimeseries(
+  db: Database,
+  q: { metric: Metric; group: Group; fromMs: number; toMs: number; stepMs: number },
+): Timeseries {
+  const { fromMs, toMs, stepMs } = q;
+  if (![fromMs, toMs, stepMs].every(Number.isSafeInteger) || fromMs >= toMs || stepMs <= 0)
+    throw new BadRequest("fromMs, toMs, stepMs must be integers with fromMs < toMs, stepMs > 0");
+  const n = Math.ceil((toMs - fromMs) / stepMs);
+  if (n > MAX_WINDOW_BUCKETS) throw new BadRequest(`at most ${MAX_WINDOW_BUCKETS} buckets`);
+  const buckets = Array.from({ length: n }, (_, i) => String(fromMs + i * stepMs));
+  const series = buildSeries(db, q.metric, q.group, buckets, {
+    table: `(SELECT r.*, COALESCE(s.project, '') project, 1 request_count
+      FROM requests r LEFT JOIN sessions s ON s.id = r.session_id
+      WHERE r.ts >= $fromMs AND r.ts < $toMs)`,
+    key: "(ts - $fromMs) / $stepMs", // integer division
+    params: { fromMs, toMs, stepMs },
+    at: (i) => Number(i),
+  });
   return { buckets, series };
 }
 
