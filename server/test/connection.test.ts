@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../src/config";
+import { loadConfig, setConfigKey } from "../src/config";
 import { writeConnectionFile } from "../src/connection";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "td-conn-"));
@@ -36,5 +36,59 @@ test("connectionPath follows TD_CONFIG", () => {
   );
   expect(loadConfig({ HOME: h }).connectionPath).toBe(
     join(h, ".config/token-dashboard/server.json"),
+  );
+});
+
+test("extra keys are merged, url/protocol win", () => {
+  const p = join(tmp(), "server.json");
+  writeFileSync(p, JSON.stringify({ start: ["old"], other: 1 }));
+  writeConnectionFile(p, "http://127.0.0.1:3", { start: ["new"], serverLocation: "wsl", url: "x" });
+  expect(read(p)).toEqual({
+    start: ["new"],
+    other: 1,
+    serverLocation: "wsl",
+    url: "http://127.0.0.1:3",
+    protocol: 1,
+  });
+});
+
+test("connectionFiles is read from config.json", () => {
+  const d = tmp();
+  const cfg = join(d, "config.json");
+  writeFileSync(
+    cfg,
+    JSON.stringify({ connectionFiles: ["/a/server.json", "/mnt/c/b/server.json"] }),
+  );
+  expect(loadConfig({ HOME: d, TD_CONFIG: cfg }).connectionFiles).toEqual([
+    "/a/server.json",
+    "/mnt/c/b/server.json",
+  ]);
+  expect(loadConfig({ HOME: tmp() }).connectionFiles).toBeNull();
+});
+
+test("connectionFiles must be absolute paths", () => {
+  const d = tmp();
+  const cfg = join(d, "config.json");
+  writeFileSync(cfg, JSON.stringify({ connectionFiles: ["relative/server.json"] }));
+  expect(() => loadConfig({ HOME: d, TD_CONFIG: cfg })).toThrow(
+    '"connectionFiles" must be an array of absolute paths',
+  );
+});
+
+test("setConfigKey keeps other keys and deletes on undefined", () => {
+  const p = join(tmp(), "nested", "config.json");
+  setConfigKey(p, "connectionFiles", ["/x"]);
+  expect(read(p)).toEqual({ connectionFiles: ["/x"] });
+  writeFileSync(p, JSON.stringify({ subscriptionMonthlyUsd: 100, connectionFiles: ["/x"] }));
+  setConfigKey(p, "connectionFiles", undefined);
+  expect(read(p)).toEqual({ subscriptionMonthlyUsd: 100 });
+});
+
+test("connectionFiles must name server.json files", () => {
+  const d = tmp();
+  const cfg = join(d, "config.json");
+  writeFileSync(cfg, JSON.stringify({ connectionFiles: ["/home/u/.bashrc"] }));
+  expect(() => loadConfig({ HOME: d, TD_CONFIG: cfg })).toThrow(
+    '"connectionFiles" must be an array of absolute paths to server.json files',
   );
 });

@@ -40,8 +40,15 @@ function serve(db: Database, config: Config, ingest: IngestService) {
     process.exit(1);
   }
   const url = `http://127.0.0.1:${config.port}`;
-  writeConnectionFile(config.connectionPath, url);
-  console.log(`dashboard: ${url} (connection file: ${config.connectionPath})`);
+  const files = config.connectionFiles ?? [config.connectionPath];
+  for (const p of files) {
+    try {
+      writeConnectionFile(p, url);
+    } catch (e) {
+      console.error(`connection file ${p}: ${(e as Error).message}`); // e.g. /mnt/c not mounted
+    }
+  }
+  console.log(`dashboard: ${url} (connection files: ${files.join(", ")})`);
 }
 
 async function main(cmd: string | undefined) {

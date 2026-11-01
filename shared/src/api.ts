@@ -159,4 +159,9 @@ export type PlanWindow = {
 };
 export type PlanWindows = { current: PlanWindow[]; past: PlanWindow[] };
 /** `server.json`: how the mod finds the server (SPEC §11.3). */
-export type ConnectionFile = { url: string; protocol: number; start?: string[] };
+export type ConnectionFile = {
+  url: string;
+  protocol: number;
+  start?: string[];
+  serverLocation?: string;
+};

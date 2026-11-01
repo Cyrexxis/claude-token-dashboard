@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 export type Config = {
   dataDir: string;
@@ -8,6 +8,8 @@ export type Config = {
   configPath: string;
   localPricesPath: string;
   connectionPath: string;
+  /** Connection files `serve` refreshes (set by `setup`); null = just `connectionPath`. */
+  connectionFiles: string[] | null;
   port: number;
   extraRoots: string[];
   pollIntervalMs: number;
@@ -46,13 +48,17 @@ export function loadConfig(env: Env = process.env): Config {
     pollIntervalMs: file.pollIntervalMs ?? 5000,
     windowsRoots: file.windowsRoots ?? "auto",
     subscriptionMonthlyUsd: file.subscriptionMonthlyUsd ?? null,
+    connectionFiles: file.connectionFiles ?? null,
   };
 }
 
 function readConfigFile(
   path: string,
 ): Partial<
-  Pick<Config, "extraRoots" | "pollIntervalMs" | "windowsRoots" | "subscriptionMonthlyUsd">
+  Pick<
+    Config,
+    "extraRoots" | "pollIntervalMs" | "windowsRoots" | "subscriptionMonthlyUsd" | "connectionFiles"
+  >
 > {
   let raw: unknown;
   try {
@@ -80,5 +86,31 @@ function readConfigFile(
     !(typeof c.subscriptionMonthlyUsd === "number" && c.subscriptionMonthlyUsd >= 0)
   )
     throw bad("subscriptionMonthlyUsd", "a number >= 0");
+  if (
+    c.connectionFiles !== undefined &&
+    !(
+      Array.isArray(c.connectionFiles) &&
+      c.connectionFiles.every(
+        (p) => typeof p === "string" && isAbsolute(p) && basename(p) === "server.json",
+      )
+    )
+  )
+    // setup and uninstall delete these paths, so only server.json files are accepted
+    throw bad("connectionFiles", "an array of absolute paths to server.json files");
   return c as Partial<Config>;
+}
+
+/** Sets (or, with undefined, removes) one key in config.json, keeping every other key. */
+export function setConfigKey(path: string, key: string, value: unknown): void {
+  let c: Record<string, unknown> = {};
+  try {
+    c = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  if (value === undefined) delete c[key];
+  else c[key] = value;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(`${path}.tmp`, `${JSON.stringify(c, null, 2)}\n`);
+  renameSync(`${path}.tmp`, path);
 }

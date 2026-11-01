@@ -1,6 +1,14 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { openDatabase } from "../src/db/database";
@@ -86,6 +94,29 @@ test("unknown command exits 2", () => {
   const r = cli(env(), "nope");
   expect(r.code).toBe(2);
   expect(r.err).toContain("usage");
+});
+
+test("serve writes every listed connection file", async () => {
+  const e = env();
+  const dir = dirname(e.TD_CONFIG);
+  const files = [join(dir, "a", "server.json"), join(dir, "b", "server.json")];
+  writeFileSync(e.TD_CONFIG, JSON.stringify({ windowsRoots: false, connectionFiles: files }));
+  const port = 47900 + Math.floor(Math.random() * 1000);
+  const child = Bun.spawn(["bun", "server/src/cli.ts", "serve"], {
+    env: { TZ: "UTC", ...process.env, ...e, TD_PORT: String(port) },
+    stdout: "ignore",
+    stderr: "inherit",
+  });
+  try {
+    const deadline = Date.now() + 5000;
+    while (!files.every((f) => existsSync(f)) && Date.now() < deadline) await Bun.sleep(50);
+  } finally {
+    child.kill();
+    await child.exited;
+  }
+  for (const f of files)
+    expect(JSON.parse(readFileSync(f, "utf8")).url).toBe(`http://127.0.0.1:${port}`);
+  expect(existsSync(join(dir, "server.json"))).toBe(false);
 });
 
 test("a timezone change rebuilds all rollup days", () => {

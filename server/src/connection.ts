@@ -2,8 +2,12 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { PROTOCOL } from "@td/shared";
 
-/** Writes url + protocol into `server.json`, keeping any other keys (e.g. a `start` from setup). */
-export function writeConnectionFile(path: string, url: string): void {
+/** Writes url + protocol (and `extra`, e.g. setup's `start`) into `server.json`, keeping other keys. */
+export function writeConnectionFile(
+  path: string,
+  url: string,
+  extra: Record<string, unknown> = {},
+): void {
   let existing: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
@@ -12,7 +16,7 @@ export function writeConnectionFile(path: string, url: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(
     `${path}.tmp`,
-    `${JSON.stringify({ ...existing, url, protocol: PROTOCOL }, null, 2)}\n`,
+    `${JSON.stringify({ ...existing, ...extra, url, protocol: PROTOCOL }, null, 2)}\n`,
   );
   renameSync(`${path}.tmp`, path);
 }
