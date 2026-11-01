@@ -158,7 +158,7 @@ test("bad query params → 400; unknown session → 404", async () => {
   for (const p of [
     "/api/v1/summary?from=2026-13-01",
     "/api/v1/timeseries?metric=x",
-    "/api/v1/timeseries?metric=cost&group=type",
+    "/api/v1/timeseries?metric=requests&group=type",
     "/api/v1/sessions?limit=abc",
   ]) {
     const r = await req(p);

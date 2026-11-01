@@ -99,12 +99,14 @@ const VALUE: Record<Metric, string> = {
   cost: "cost_usd",
   requests: "request_count",
 };
+// [key, label, token column, cost column]; web search has a cost but no tokens.
 const TYPE_SERIES = [
-  ["input", "Input", "input"],
-  ["output", "Output", "output"],
-  ["cacheRead", "Cache read", "cache_read"],
-  ["cacheWrite5m", "Cache write 5m", "cache_write_5m"],
-  ["cacheWrite1h", "Cache write 1h", "cache_write_1h"],
+  ["input", "Input", "input", "cost_input"],
+  ["output", "Output", "output", "cost_output"],
+  ["cacheRead", "Cache read", "cache_read", "cost_cache_read"],
+  ["cacheWrite5m", "Cache write 5m", "cache_write_5m", "cost_cache_write_5m"],
+  ["cacheWrite1h", "Cache write 1h", "cache_write_1h", "cost_cache_write_1h"],
+  ["webSearch", "Web search", null, "cost_web_search"],
 ] as const;
 const GROUP_KEY: Record<Exclude<Group, "type">, string> = {
   model: "COALESCE(model, 'unknown')",
@@ -159,8 +161,8 @@ export function getTimeseries(
   db: Database,
   q: { metric: Metric; group: Group; bucket: Bucket } & Range,
 ): Timeseries {
-  if (q.group === "type" && q.metric !== "tokens")
-    throw new BadRequest("group=type is only available for metric=tokens");
+  if (q.group === "type" && q.metric === "requests")
+    throw new BadRequest("group=type is only available for metric=tokens or cost");
   const range = { from: q.from, to: q.to };
   const earliest = db
     .query<{ day: string | null }, []>("SELECT MIN(day) day FROM daily_rollups")
@@ -173,13 +175,17 @@ export function getTimeseries(
   const at = (day: string) => index.get(bucketOf(day, q.bucket));
 
   if (q.group === "type") {
+    const types = TYPE_SERIES.flatMap(([key, label, tokenCol, costCol]) => {
+      const col = q.metric === "cost" ? costCol : tokenCol;
+      return col ? [{ key, label, col }] : [];
+    });
     const rows = db
       .query<Record<string, number> & { day: string }, [Range]>(
-        `SELECT day, ${TYPE_SERIES.map(([k, , col]) => `TOTAL(${col}) ${k}`).join(", ")}
+        `SELECT day, ${types.map((t) => `TOTAL(${t.col}) ${t.key}`).join(", ")}
          FROM daily_rollups WHERE ${DAY_WHERE} GROUP BY day`,
       )
       .all(range);
-    const series = TYPE_SERIES.map(([key, label]) => ({
+    const series = types.map(({ key, label }) => ({
       key,
       label,
       values: buckets.map(() => 0),
@@ -188,7 +194,11 @@ export function getTimeseries(
       const i = at(row.day);
       if (i !== undefined) for (const s of series) s.values[i] += row[s.key];
     }
-    return { buckets, series };
+    // Web search only shows up when something was searched.
+    return {
+      buckets,
+      series: series.filter((s) => s.key !== "webSearch" || s.values.some(Boolean)),
+    };
   }
 
   const rows = db

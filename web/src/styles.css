@@ -299,10 +299,23 @@ textarea {
   font-size: 12px;
   padding-top: 8px;
 }
-.legend > span {
+.legend > span,
+.legend > button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.legend > button {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+}
+.legend > button[aria-pressed="false"] {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.legend > button[aria-pressed="false"] .swatch {
+  opacity: 0.3;
 }
 .bar {
   height: 6px;

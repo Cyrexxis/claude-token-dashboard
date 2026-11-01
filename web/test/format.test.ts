@@ -43,7 +43,7 @@ test("presetRange and autoBucket", () => {
 
 test("parseHash", () => {
   expect(parseHash("#/sessions/abc")).toEqual({ view: "sessions", id: "abc" });
-  expect(parseHash("#/cost")).toEqual({ view: "cost" });
+  expect(parseHash("#/plan")).toEqual({ view: "plan" });
   expect(parseHash("")).toEqual({ view: "overview" });
   expect(parseHash("#/nope")).toEqual({ view: "overview" });
 });

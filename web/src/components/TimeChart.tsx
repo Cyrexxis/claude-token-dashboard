@@ -1,4 +1,5 @@
 import type { Timeseries } from "@td/shared";
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -28,6 +29,8 @@ type Props = {
   format: (n: number) => string;
   marks?: { day: string; label: string }[];
   height?: number;
+  /** Series keys hidden until the legend toggles them on. */
+  defaultHidden?: string[];
 };
 
 type TipProps = {
@@ -61,7 +64,15 @@ function Tip({ active, label, payload, format }: TipProps) {
 }
 
 /** Stacked time chart: one stack per bucket, legend, tooltip with per-series values and the total. */
-export function TimeChart({ data, kind, format, marks = [], height = 300 }: Props) {
+export function TimeChart({
+  data,
+  kind,
+  format,
+  marks = [],
+  height = 300,
+  defaultHidden = [],
+}: Props) {
+  const [hidden, setHidden] = useState(() => new Set(defaultHidden));
   if (!data.series.length) return <p className="muted empty">No data in this period.</p>;
   // Index-based keys: model and project names may contain dots, which Recharts reads as paths.
   const rows = data.buckets.map((bucket, i) => {
@@ -71,7 +82,15 @@ export function TimeChart({ data, kind, format, marks = [], height = 300 }: Prop
     });
     return row;
   });
-  const last = data.series.length - 1;
+  const toggle = (key: string) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  // j stays the index into data.series, so colors and dataKeys don't shift when a series is hidden.
+  const shown = data.series.flatMap((s, j) => (hidden.has(s.key) ? [] : [{ s, j }]));
+  const last = shown.at(-1)?.j;
   const axis = {
     stroke: "var(--axis)",
     tick: { fill: "var(--muted)", fontSize: 12 },
@@ -92,10 +111,15 @@ export function TimeChart({ data, kind, format, marks = [], height = 300 }: Prop
           content={() => (
             <div className="legend">
               {data.series.map((s, j) => (
-                <span key={s.key}>
+                <button
+                  type="button"
+                  key={s.key}
+                  aria-pressed={!hidden.has(s.key)}
+                  onClick={() => toggle(s.key)}
+                >
                   <span className="swatch" style={{ background: seriesColor(s.key, j) }} />
                   {s.label}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -117,7 +141,7 @@ export function TimeChart({ data, kind, format, marks = [], height = 300 }: Prop
       {kind === "bar" ? (
         <BarChart data={rows} barCategoryGap="20%">
           {common}
-          {data.series.map((s, j) => (
+          {shown.map(({ s, j }) => (
             <Bar
               key={s.key}
               dataKey={`s${j}`}
@@ -134,7 +158,7 @@ export function TimeChart({ data, kind, format, marks = [], height = 300 }: Prop
       ) : (
         <AreaChart data={rows}>
           {common}
-          {data.series.map((s, j) => (
+          {shown.map(({ s, j }) => (
             <Area
               key={s.key}
               dataKey={`s${j}`}

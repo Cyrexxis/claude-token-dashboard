@@ -200,10 +200,30 @@ test("labels: project is the cwd basename, source is kind · host", () => {
   expect(labels("source")).toEqual({ "1": "wsl · pc" });
 });
 
-test("type group with cost metric → BadRequest", () => {
+test("type group with requests metric → BadRequest", () => {
   expect(() =>
-    getTimeseries(db(), { metric: "cost", group: "type", bucket: "day", from: null, to: null }),
+    getTimeseries(db(), { metric: "requests", group: "type", bucket: "day", from: null, to: null }),
   ).toThrow(BadRequest);
+});
+
+test("cost by type: one series per token type; web search only when used", () => {
+  const d = db();
+  const r = { ts: at("2026-10-14"), cost_usd: 3, cost_input: 1, cost_output: 2 };
+  insertRequest(d, r);
+  rebuildRollups(d, "all");
+  const q = {
+    metric: "cost",
+    group: "type",
+    bucket: "day",
+    from: "2026-10-14",
+    to: "2026-10-14",
+  } as const;
+  const values = () =>
+    Object.fromEntries(getTimeseries(d, q).series.map((s) => [s.key, s.values[0]]));
+  expect(values()).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 });
+  insertRequest(d, { ...r, cost_web_search: 0.5 });
+  rebuildRollups(d, "all");
+  expect(values()).toMatchObject({ input: 2, webSearch: 0.5 });
 });
 
 test("empty db timeseries with a range → zero buckets, no series", () => {

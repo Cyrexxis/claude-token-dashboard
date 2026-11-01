@@ -1,31 +1,32 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Summary, Timeseries } from "@td/shared";
+import type { Prices, Summary } from "@td/shared";
 import type { ViewProps } from "../App";
 import { api } from "../api";
+import { SeriesView } from "../components/SeriesView";
 import { StatTile } from "../components/StatTile";
-import { TimeChart } from "../components/TimeChart";
-import { autoBucket, fmtDuration, fmtTokens, fmtUsd, rangeDays } from "../format";
-import { kindLabel, useNow, usePlanWindows } from "./Plan";
+import { fmtTokens, fmtUsd, rangeDays } from "../format";
 
 const DAYS_PER_MONTH = 30.4375;
 
 export function Overview({ range }: ViewProps) {
-  const bucket = autoBucket(range);
   const summary = useQuery({
     queryKey: ["summary", range],
     queryFn: () => api<Summary>("/summary", range),
   });
-  const series = useQuery({
-    queryKey: ["timeseries", { ...range, metric: "tokens", group: "type", bucket }],
-    queryFn: () =>
-      api<Timeseries>("/timeseries", { ...range, metric: "tokens", group: "type", bucket }),
-  });
-  const plan = usePlanWindows(range);
-  const now = useNow();
+  const prices = useQuery({ queryKey: ["prices"], queryFn: () => api<Prices>("/prices") });
   const s = summary.data;
   if (summary.error) return <p className="error">{summary.error.message}</p>;
   if (!s) return <p className="muted">Loading…</p>;
 
+  // A price change is marked on the bucket that contains its effective date.
+  const priceMarks = (buckets: string[]) =>
+    (prices.data?.periods ?? []).flatMap((p) => {
+      if (!p.effectiveFrom || !buckets.length) return [];
+      if (p.effectiveFrom < buckets[0]) return [];
+      if (range.to && p.effectiveFrom > range.to) return [];
+      const at = buckets.filter((b) => b <= (p.effectiveFrom as string)).at(-1);
+      return at ? [{ day: at, label: `${p.modelId} price change` }] : [];
+    });
   const t = s.tokens;
   const days = rangeDays(range);
   const sub =
@@ -52,14 +53,6 @@ export function Overview({ range }: ViewProps) {
             sub={`${fmtUsd(sub)} of plan for ${days} days`}
           />
         )}
-        {plan.data?.current.map((w) => (
-          <StatTile
-            key={`${w.kind}-${w.resetsAt}`}
-            label={`${kindLabel(w.kind)} plan`}
-            value={`${w.peakPercent.toFixed(1).replace(/\.0$/, "")} %`}
-            sub={`resets in ${fmtDuration(Math.max(w.resetsAt - now, 0))}`}
-          />
-        ))}
         <StatTile label="Requests" value={s.requests.toLocaleString()} />
         <StatTile label="Sessions" value={s.sessions.toLocaleString()} />
         <StatTile
@@ -68,20 +61,21 @@ export function Overview({ range }: ViewProps) {
           sub="cache read ÷ all input"
         />
       </div>
-      {plan.data && !plan.data.current.length && (
-        <p className="muted note">
-          No current plan window: load the mod to see plan usage (see the <a href="#/plan">Plan</a>{" "}
-          page).
-        </p>
-      )}
-      <section className="card">
-        <h2>Tokens by type</h2>
-        {series.data ? (
-          <TimeChart data={series.data} kind="area" format={fmtTokens} />
-        ) : (
-          <p className="muted">Loading…</p>
-        )}
-      </section>
+      <SeriesView
+        range={range}
+        metric="tokens"
+        groups={["type", "model", "source", "project"]}
+        title="Tokens"
+        // Cache reads dwarf every other type and would flatten the chart.
+        defaultHidden={["cacheRead"]}
+      />
+      <SeriesView
+        range={range}
+        metric="cost"
+        groups={["type", "model", "source", "project"]}
+        title="API-equivalent cost at historical prices"
+        marks={priceMarks}
+      />
     </>
   );
 }

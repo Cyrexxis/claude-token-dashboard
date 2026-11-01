@@ -233,14 +233,16 @@ requests           id, message_id, request_id ('' when absent), UNIQUE(message_i
                    input, output, cache_read, cache_write_5m, cache_write_1h,
                    thinking, web_search, web_fetch,
                    service_tier, speed, inference_geo, effort, is_sidechain,
-                   cost_usd, price_period_id, unpriced, usage_raw_json
+                   cost_usd, price_period_id, unpriced, usage_raw_json,
+                   cost_input, cost_output, cost_cache_read, cost_cache_write_5m,
+                   cost_cache_write_1h, cost_web_search (cost per type; sums to cost_usd)
 price_periods      id, model_id, effective_from, effective_to, origin (shipped|local), values_json
 cost_states        session_id, start_time, ts, model, input, output, thinking, cache_read,
                    cache_write, web_search, cost_usd, total_cost_usd, has_unknown_model_cost
                    PRIMARY KEY(session_id, start_time, model)
 plan_snapshots     id, ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin (mod|desktop)
 plan_windows       org_id, kind, resets_at, peak_percent, tokens_in_window, cost_in_window
-daily_rollups      day, source_id, model, project, token columns…, cost_usd, request_count
+daily_rollups      day, source_id, model, project, token columns…, cost_usd, request_count, cost_<type> columns…
 live_usage         session_id, turn_id, step_index, ts, model, 4 token counts   (temporary, dropped after ingest)
 settings           key, value
 ```
@@ -277,7 +279,7 @@ Read (UI): `GET /events` (SSE, §10.4), `GET /summary`, `/timeseries?metric=&gro
 
 Admin (UI): `PUT /prices/local` (body = the raw JSON file, validated before it is written), `POST /sources/:id/rescan` (resets the source's read offsets and re-reads every transcript; dedup makes this safe), `POST /import/chat-export` (later).
 
-Read conventions (phase 2): `from`/`to` are server-local days `YYYY-MM-DD` between 1970 and 2100, inclusive, both optional. `timeseries` returns contiguous zero-filled buckets (week = Monday, month = the 1st) and keeps the top 8 groups plus one `other` series; `group=type` (token types) only with `metric=tokens`. `sessions` pages with `limit` (1–200, default 50) and `offset`. Errors are `{error, message}` JSON with status 400 / 404.
+Read conventions (phase 2): `from`/`to` are server-local days `YYYY-MM-DD` between 1970 and 2100, inclusive, both optional. `timeseries` returns contiguous zero-filled buckets (week = Monday, month = the 1st) and keeps the top 8 groups plus one `other` series; `group=type` (token types) with `metric=tokens` or `metric=cost` (cost adds a web search series when non-zero). `sessions` pages with `limit` (1–200, default 50) and `offset`. Errors are `{error, message}` JSON with status 400 / 404.
 
 Every write carries an idempotency key (e.g. `session:turn:step`, `org:kind:resetsAt:percent`) so retries never double-count. Requests carry `X-TD-Protocol`; the server rejects unknown major versions with a clear "update the plugin / server" message.
 
@@ -380,13 +382,11 @@ Nothing durable lives in the plugin cache (`~/.claude/plugins/cache/…`), which
 
 ## 14. Dashboard views
 
-1. **Overview** — totals for selectable period; API-equivalent cost vs. subscription price; tokens by type (stacked); cache hit ratio; current plan windows with reset countdown.
-2. **Tokens over time** — stacked area/bar by token type; group by model, source, project; day/week/month buckets.
-3. **Cost over time** — API-equivalent cost at historical prices; marks where prices changed; unpriced banner.
-4. **Plan usage** — timeline of the current window, tabs for 5-hour (with the weekly curve) and weekly (weekly only), x-axis always the full window; sessions in the current window (same tabs), sortable by column, newest first by default; token/cost overlay; tokens-per-percent estimate (experimental).
-5. **Sessions** — list with source, project, title, model, duration, tokens, cost; detail page with per-request table, subagents and cache behaviour.
-6. **Models & projects** — breakdowns and trends.
-7. **Sources & status** — data sources, last scan, file counts, ingest errors, versions, price file version, local price editor.
+1. **Overview** — totals for selectable period; API-equivalent cost vs. subscription price; cache hit ratio; tokens over time (stacked bars by token type, model, source or project; day/week/month buckets); API-equivalent cost over time at historical prices, grouped the same way (token type adds web search), with marks where prices changed. Legend entries toggle series; cache read starts hidden on the tokens chart. Plan windows live on the Plan view only.
+2. **Plan usage** — timeline of the current window, tabs for 5-hour (with the weekly curve) and weekly (weekly only), x-axis always the full window; sessions in the current window (same tabs), sortable by column, newest first by default; token/cost overlay; tokens-per-percent estimate (experimental).
+3. **Sessions** — list with source, project, title, model, duration, tokens, cost; detail page with per-request table, subagents and cache behaviour.
+4. **Models & projects** — breakdowns and trends.
+5. **Sources & status** — data sources, last scan, file counts, ingest errors, versions, price file version, local price editor.
 
 All views update live via SSE.
 

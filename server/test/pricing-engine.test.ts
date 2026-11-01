@@ -84,6 +84,23 @@ test("fast speed doubles Opus 5.5 token cost, not the web search fee", () => {
   expect(cost({ input: 1_000_000, speed: "standard" })).toBeCloseTo(4, 9);
 });
 
+test("cost parts per token type add up to the total", () => {
+  const r = priced({
+    input: 1_000_000,
+    output: 1_000_000,
+    cacheRead: 1_000_000,
+    cacheWrite1h: 1_000_000,
+    speed: "fast",
+    webSearch: 1,
+  });
+  expect(r.parts.input).toBeCloseTo(8, 9);
+  expect(r.parts.output).toBeCloseTo(40, 9);
+  expect(r.parts.cacheWrite5m).toBe(0);
+  expect(r.parts.webSearch).toBeCloseTo(0.01, 9);
+  const sum = Object.values(r.parts).reduce((a, b) => a + b, 0);
+  expect(sum).toBeCloseTo(r.costUsd, 9);
+});
+
 test("dated ids match the right family", () => {
   expect(periodId("claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5@release@shipped");
   expect(periodId("claude-opus-4-5-20251101")).toBe("claude-opus-4-5@release@shipped");
@@ -106,8 +123,14 @@ test("period boundary: effective_to is exclusive", () => {
     ]),
   );
   const at = (iso: string) => priced({ model: "m1", ts: Date.parse(iso), input: 1_000_000 }, t);
-  expect(at("2026-05-31T23:59:59.999Z")).toEqual({ costUsd: 1, pricePeriodId: "m1@release@local" });
-  expect(at("2026-06-01T00:00:00Z")).toEqual({ costUsd: 2, pricePeriodId: "m1@2026-06-01@local" });
+  expect(at("2026-05-31T23:59:59.999Z")).toMatchObject({
+    costUsd: 1,
+    pricePeriodId: "m1@release@local",
+  });
+  expect(at("2026-06-01T00:00:00Z")).toMatchObject({
+    costUsd: 2,
+    pricePeriodId: "m1@2026-06-01@local",
+  });
 });
 
 test("timestamp before the first period → unpriced", () => {
@@ -131,7 +154,7 @@ test("local override wins", () => {
       { id: "claude-opus-5-5", match: ["claude-opus-5-5"], periods: [period(null, null, 100)] },
     ]),
   );
-  expect(priced({ input: 1_000_000 }, t)).toEqual({
+  expect(priced({ input: 1_000_000 }, t)).toMatchObject({
     costUsd: 100,
     pricePeriodId: "claude-opus-5-5@release@local",
   });

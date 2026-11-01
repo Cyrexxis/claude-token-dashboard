@@ -54,6 +54,10 @@ test("first sync fills price_periods, reprices and rolls up", async () => {
     ),
   ).toEqual({ cost_usd: null, price_period_id: null, unpriced: 1 });
   expect(one(db, "select sum(cost_usd) s from daily_rollups")).toEqual({ s: 4 });
+  expect(one(db, "select sum(cost_input) i, sum(cost_output) o from daily_rollups")).toEqual({
+    i: 4,
+    o: 0,
+  });
 });
 
 test("unchanged hash is a no-op", async () => {

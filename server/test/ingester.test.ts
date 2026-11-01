@@ -73,6 +73,11 @@ test("multi-line response counted once", async () => {
     price_period_id: "claude-opus-5-5@release@shipped",
     unpriced: 0,
   });
+  expect(one(db, "select cost_input, cost_output, cost_cache_read from requests")).toEqual({
+    cost_input: (5 * 4) / 1e6,
+    cost_output: (7 * 20) / 1e6,
+    cost_cache_read: 0,
+  });
   expect(session(db)).toMatchObject({
     project: "-home-u-proj",
     cwd: "/home/user/demo",

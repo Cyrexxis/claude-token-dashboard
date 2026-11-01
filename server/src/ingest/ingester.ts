@@ -60,17 +60,22 @@ function statements(db: Database) {
     request: db.query(
       `INSERT INTO requests (message_id, request_id, session_id, agent_id, ts, model, source_id, file_id,
          input, output, cache_read, cache_write_5m, cache_write_1h, thinking, web_search, web_fetch,
-         service_tier, speed, inference_geo, effort, is_sidechain, cost_usd, price_period_id, unpriced, usage_raw_json)
+         service_tier, speed, inference_geo, effort, is_sidechain, cost_usd, price_period_id, unpriced, usage_raw_json,
+         cost_input, cost_output, cost_cache_read, cost_cache_write_5m, cost_cache_write_1h, cost_web_search)
        VALUES ($messageId, $requestId, $sessionId, $agentId, $ts, $model, $sourceId, $fileId,
          $input, $output, $cacheRead, $cacheWrite5m, $cacheWrite1h, $thinking, $webSearch, $webFetch,
-         $serviceTier, $speed, $inferenceGeo, $effort, $isSidechain, $costUsd, $pricePeriodId, $unpriced, $usageRaw)
+         $serviceTier, $speed, $inferenceGeo, $effort, $isSidechain, $costUsd, $pricePeriodId, $unpriced, $usageRaw,
+         $costInput, $costOutput, $costCacheRead, $costCacheWrite5m, $costCacheWrite1h, $costWebSearch)
        ON CONFLICT(message_id, request_id) DO UPDATE SET
          input = excluded.input, output = excluded.output, cache_read = excluded.cache_read,
          cache_write_5m = excluded.cache_write_5m, cache_write_1h = excluded.cache_write_1h,
          thinking = excluded.thinking, web_search = excluded.web_search, web_fetch = excluded.web_fetch,
          service_tier = excluded.service_tier, speed = excluded.speed, inference_geo = excluded.inference_geo,
          cost_usd = excluded.cost_usd, price_period_id = excluded.price_period_id, unpriced = excluded.unpriced,
-         usage_raw_json = excluded.usage_raw_json
+         usage_raw_json = excluded.usage_raw_json, cost_input = excluded.cost_input,
+         cost_output = excluded.cost_output, cost_cache_read = excluded.cost_cache_read,
+         cost_cache_write_5m = excluded.cost_cache_write_5m, cost_cache_write_1h = excluded.cost_cache_write_1h,
+         cost_web_search = excluded.cost_web_search
        WHERE excluded.output > requests.output`,
     ),
     // Latest non-null wins per column; title and ai_title are separate so an AI title never hides a rename.
@@ -230,6 +235,12 @@ function writeRequest(
       pricePeriodId: priced?.pricePeriodId ?? null,
       unpriced: priced ? 0 : 1,
       usageRaw: JSON.stringify(p.usageRaw),
+      costInput: priced?.parts.input ?? null,
+      costOutput: priced?.parts.output ?? null,
+      costCacheRead: priced?.parts.cacheRead ?? null,
+      costCacheWrite5m: priced?.parts.cacheWrite5m ?? null,
+      costCacheWrite1h: priced?.parts.cacheWrite1h ?? null,
+      costWebSearch: priced?.parts.webSearch ?? null,
     } as never).changes > 0
   );
 }

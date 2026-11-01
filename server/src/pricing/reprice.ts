@@ -23,7 +23,8 @@ export function reprice(db: Database, table: PriceTable, sessionIds?: string[]):
     )
     .all(...(sessionIds ? [JSON.stringify(sessionIds)] : []));
   const update = db.query(
-    "UPDATE requests SET cost_usd = ?, price_period_id = ?, unpriced = ? WHERE id = ?",
+    `UPDATE requests SET cost_usd = ?, price_period_id = ?, unpriced = ?, cost_input = ?, cost_output = ?,
+       cost_cache_read = ?, cost_cache_write_5m = ?, cost_cache_write_1h = ?, cost_web_search = ? WHERE id = ?`,
   );
   db.transaction(() => {
     for (const r of rows) {
@@ -38,8 +39,22 @@ export function reprice(db: Database, table: PriceTable, sessionIds?: string[]):
         webSearch: r.web_search,
         speed: r.speed,
       });
-      if ("unpriced" in p) update.run(null, null, 1, r.id);
-      else update.run(p.costUsd, p.pricePeriodId, 0, r.id);
+      if ("unpriced" in p) update.run(null, null, 1, null, null, null, null, null, null, r.id);
+      else {
+        const c = p.parts;
+        update.run(
+          p.costUsd,
+          p.pricePeriodId,
+          0,
+          c.input,
+          c.output,
+          c.cacheRead,
+          c.cacheWrite5m,
+          c.cacheWrite1h,
+          c.webSearch,
+          r.id,
+        );
+      }
     }
   })();
   return rows.length;

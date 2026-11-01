@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-export type View = "overview" | "tokens" | "cost" | "plan" | "sessions" | "status";
+export type View = "overview" | "plan" | "sessions" | "status";
 export type Route = { view: View; id?: string };
-const VIEWS: View[] = ["overview", "tokens", "cost", "plan", "sessions", "status"];
+const VIEWS: View[] = ["overview", "plan", "sessions", "status"];
 
 export function parseHash(hash: string): Route {
   const [view, ...rest] = hash.replace(/^#\/?/, "").split("/");

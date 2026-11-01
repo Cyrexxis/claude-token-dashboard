@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Bucket, Group, Metric, Timeseries } from "@td/shared";
 import { useState } from "react";
-import type { ViewProps } from "../App";
 import { api } from "../api";
 import { TimeChart } from "../components/TimeChart";
 import { autoBucket, fmtTokens, fmtUsd, type Range } from "../format";
@@ -14,19 +13,21 @@ const LABELS: Record<Group, string> = {
   project: "Project",
 };
 
-/** Shared by the Tokens and Cost views: group + bucket selectors over one stacked bar chart. */
+/** Group + bucket selectors over one stacked bar chart. */
 export function SeriesView({
   range,
   metric,
   groups,
   title,
   marks,
+  defaultHidden,
 }: {
   range: Range;
   metric: Metric;
   groups: Group[];
   title: string;
   marks?: (buckets: string[]) => { day: string; label: string }[];
+  defaultHidden?: string[];
 }) {
   const [group, setGroup] = useState<Group>(groups[0]);
   const [picked, setPicked] = useState<Bucket | null>(null);
@@ -69,20 +70,10 @@ export function SeriesView({
           height={380}
           format={metric === "cost" ? fmtUsd : fmtTokens}
           marks={marks?.(q.data.buckets)}
+          defaultHidden={defaultHidden}
         />
       )}
       {!q.data && !q.error && <p className="muted">Loading…</p>}
     </section>
-  );
-}
-
-export function Tokens({ range }: ViewProps) {
-  return (
-    <SeriesView
-      range={range}
-      metric="tokens"
-      groups={["type", "model", "source", "project"]}
-      title="Tokens"
-    />
   );
 }

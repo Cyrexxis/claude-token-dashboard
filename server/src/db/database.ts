@@ -3,9 +3,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { SERVER_VERSION } from "../version";
 import m0001 from "./migrations/0001_init.sql" with { type: "text" };
+import m0002 from "./migrations/0002_cost_by_type.sql" with { type: "text" };
 
 // Imported as text so the SQL is embedded in the compiled program. Append new migrations; never edit old ones.
-const MIGRATIONS = [m0001];
+const MIGRATIONS = [m0001, m0002];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
 export function openDatabase(path: string): Database {

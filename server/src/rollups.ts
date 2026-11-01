@@ -3,10 +3,12 @@ import type { Database } from "bun:sqlite";
 const DAY = "date(r.ts / 1000, 'unixepoch', 'localtime')";
 const INSERT = `
   INSERT INTO daily_rollups (day, source_id, model, project, input, output, cache_read, cache_write_5m,
-    cache_write_1h, thinking, web_search, web_fetch, cost_usd, request_count)
+    cache_write_1h, thinking, web_search, web_fetch, cost_usd, request_count, cost_input, cost_output,
+    cost_cache_read, cost_cache_write_5m, cost_cache_write_1h, cost_web_search)
   SELECT ${DAY}, r.source_id, r.model, COALESCE(s.project, ''), SUM(r.input), SUM(r.output), SUM(r.cache_read),
     SUM(r.cache_write_5m), SUM(r.cache_write_1h), SUM(r.thinking), SUM(r.web_search), SUM(r.web_fetch),
-    TOTAL(r.cost_usd), COUNT(*)
+    TOTAL(r.cost_usd), COUNT(*), TOTAL(r.cost_input), TOTAL(r.cost_output), TOTAL(r.cost_cache_read),
+    TOTAL(r.cost_cache_write_5m), TOTAL(r.cost_cache_write_1h), TOTAL(r.cost_web_search)
   FROM requests r LEFT JOIN sessions s ON s.id = r.session_id`;
 const GROUP = "GROUP BY 1, 2, 3, 4";
 

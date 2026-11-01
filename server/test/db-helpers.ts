@@ -17,6 +17,9 @@ export type Req = Partial<{
   web_fetch: number;
   speed: string;
   cost_usd: number | null;
+  cost_input: number;
+  cost_output: number;
+  cost_web_search: number;
   agent_id: string;
   unpriced: number;
 }>;
