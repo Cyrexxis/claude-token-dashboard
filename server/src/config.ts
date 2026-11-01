@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export type Config = {
   dataDir: string;
@@ -11,6 +11,7 @@ export type Config = {
   extraRoots: string[];
   pollIntervalMs: number;
   windowsRoots: "auto" | false;
+  subscriptionMonthlyUsd: number | null;
 };
 type Env = Record<string, string | undefined>;
 
@@ -36,17 +37,21 @@ export function loadConfig(env: Env = process.env): Config {
     dataDir,
     dbPath: join(dataDir, "token-dashboard.db"),
     configPath,
-    localPricesPath: join(configRoot, "prices.local.json"),
+    // Next to config.json, so TD_CONFIG isolates every config file.
+    localPricesPath: join(dirname(configPath), "prices.local.json"),
     port,
     extraRoots: file.extraRoots ?? [],
     pollIntervalMs: file.pollIntervalMs ?? 5000,
     windowsRoots: file.windowsRoots ?? "auto",
+    subscriptionMonthlyUsd: file.subscriptionMonthlyUsd ?? null,
   };
 }
 
 function readConfigFile(
   path: string,
-): Partial<Pick<Config, "extraRoots" | "pollIntervalMs" | "windowsRoots">> {
+): Partial<
+  Pick<Config, "extraRoots" | "pollIntervalMs" | "windowsRoots" | "subscriptionMonthlyUsd">
+> {
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
@@ -68,5 +73,10 @@ function readConfigFile(
     throw bad("pollIntervalMs", "a number >= 100");
   if (c.windowsRoots !== undefined && c.windowsRoots !== "auto" && c.windowsRoots !== false)
     throw bad("windowsRoots", '"auto" or false');
+  if (
+    c.subscriptionMonthlyUsd !== undefined &&
+    !(typeof c.subscriptionMonthlyUsd === "number" && c.subscriptionMonthlyUsd >= 0)
+  )
+    throw bad("subscriptionMonthlyUsd", "a number >= 0");
   return c as Partial<Config>;
 }

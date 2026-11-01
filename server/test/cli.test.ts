@@ -135,7 +135,7 @@ test("watch prices new rows with a price file changed while it runs", async () =
   });
   try {
     expect(await readUntil(child.stdout, /watching/)).toContain("watching");
-    const local = join(e.HOME, ".config/token-dashboard/prices.local.json");
+    const local = join(dirname(e.TD_CONFIG), "prices.local.json"); // next to TD_CONFIG
     mkdirSync(dirname(local), { recursive: true });
     writeFileSync(
       local,

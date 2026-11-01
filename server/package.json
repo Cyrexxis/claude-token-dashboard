@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@td/shared": "workspace:*"
+    "@td/shared": "workspace:*",
+    "hono": "^4.13.16"
   }
 }

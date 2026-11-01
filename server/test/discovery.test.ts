@@ -25,6 +25,7 @@ test("config defaults and env overrides", () => {
     extraRoots: [],
     pollIntervalMs: 5000,
     windowsRoots: "auto",
+    subscriptionMonthlyUsd: null,
   });
   const cfg = join(home, "c.json");
   writeFileSync(
@@ -41,6 +42,11 @@ test("config defaults and env overrides", () => {
     windowsRoots: false,
     extraRoots: ["/x"],
   });
+  writeFileSync(cfg, JSON.stringify({ subscriptionMonthlyUsd: 200 }));
+  expect(loadConfig({ HOME: home, TD_CONFIG: cfg })).toMatchObject({
+    localPricesPath: join(home, "prices.local.json"),
+    subscriptionMonthlyUsd: 200,
+  });
 });
 
 test("invalid config file → clear error", () => {
@@ -48,6 +54,8 @@ test("invalid config file → clear error", () => {
   const cfg = join(home, "c.json");
   writeFileSync(cfg, JSON.stringify({ pollIntervalMs: "fast" }));
   expect(() => loadConfig({ HOME: home, TD_CONFIG: cfg })).toThrow(/pollIntervalMs/);
+  writeFileSync(cfg, JSON.stringify({ subscriptionMonthlyUsd: -5 }));
+  expect(() => loadConfig({ HOME: home, TD_CONFIG: cfg })).toThrow(/subscriptionMonthlyUsd/);
   writeFileSync(cfg, "{nope");
   expect(() => loadConfig({ HOME: home, TD_CONFIG: cfg })).toThrow(cfg);
 });
