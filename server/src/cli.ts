@@ -1,18 +1,18 @@
 import type { Database } from "bun:sqlite";
-import { loadConfig } from "./config";
+import { fileURLToPath } from "node:url";
+import { createApp } from "./api/app";
+import { type Config, loadConfig } from "./config";
 import { openDatabase } from "./db/database";
-import { bus } from "./events";
-import { discoverRoots, listTranscripts } from "./ingest/discovery";
-import { ensureSource, ingestFiles, type Root } from "./ingest/ingester";
+import { discoverRoots } from "./ingest/discovery";
 import { detectPlatform } from "./platform";
-import type { PriceTable } from "./pricing/engine";
 import { loadPrices, syncPrices } from "./pricing/load";
 import { reprice } from "./pricing/reprice";
 import { ensureRollupTimezone, rebuildRollups } from "./rollups";
+import { createIngestService, type IngestService } from "./service";
 import { getStats } from "./stats";
-import { createQueue, startWatching } from "./watch/watcher";
+import { startWatching } from "./watch/watcher";
 
-const USAGE = "usage: cli.ts <scan|watch|stats|reprice>";
+const USAGE = "usage: cli.ts <scan|watch|serve|stats|reprice>";
 
 async function prepare() {
   const config = loadConfig();
@@ -24,29 +24,25 @@ async function prepare() {
   return { config, db, table: prices.table };
 }
 
-async function scan(db: Database, table: PriceTable, roots: Root[]) {
-  const sources = new Map<Root, number>();
-  let files = 0;
-  let added = 0;
-  let errors = 0;
-  for (const root of roots) {
-    const sourceId = ensureSource(db, root);
-    sources.set(root, sourceId);
-    const paths = listTranscripts(root.rootPath);
-    const r = await ingestFiles(db, sourceId, root.rootPath, paths, table);
-    db.run("UPDATE sources SET last_scan_at = ? WHERE id = ?", [Date.now(), sourceId]);
-    files += paths.length;
-    added += r.newRequests;
-    errors += r.errors;
-  }
-  console.log(`scanned ${files} files, +${added} requests, ${errors} errors`);
-  return sources;
-}
-
 const usd = (n: number) => `$${n.toFixed(6)}`;
 
+function serve(db: Database, config: Config, ingest: IngestService) {
+  // shortcut: served from disk, phase 4 embeds it in the compiled program
+  const webDir = fileURLToPath(new URL("../../web/dist", import.meta.url));
+  const app = createApp({ db, config, ingest, startedAt: Date.now(), webDir });
+  try {
+    // idleTimeout 0: SSE connections stay open indefinitely.
+    Bun.serve({ hostname: "127.0.0.1", port: config.port, fetch: app.fetch, idleTimeout: 0 });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+    console.error(`port ${config.port} in use (set TD_PORT)`);
+    process.exit(1);
+  }
+  console.log(`dashboard: http://127.0.0.1:${config.port}`);
+}
+
 async function main(cmd: string | undefined) {
-  if (!cmd || !["scan", "watch", "stats", "reprice"].includes(cmd)) {
+  if (!cmd || !["scan", "watch", "serve", "stats", "reprice"].includes(cmd)) {
     console.error(USAGE);
     process.exit(2);
   }
@@ -81,31 +77,25 @@ async function main(cmd: string | undefined) {
   }
 
   const roots = discoverRoots(detectPlatform(), config);
-  const sources = await scan(db, table, roots);
+  const ingest = createIngestService(db, config, roots);
+  // Listen before the initial scan so health answers while it runs.
+  if (cmd === "serve") serve(db, config, ingest);
+  const r = await ingest.scanAll();
+  console.log(`scanned ${r.files} files, +${r.newRequests} requests, ${r.errors} errors`);
   if (cmd === "scan") return;
 
-  const queue = createQueue();
   const watcher = startWatching({
     roots,
     pollIntervalMs: config.pollIntervalMs,
     onPaths: (root, paths) =>
-      void queue(async () => {
-        bus.emit("ingest.status", { running: true, files: paths.length, errors: 0 });
-        // Prices may have changed since start (local file edited, or another process synced); no-op when the hash matches.
-        const prices = await loadPrices(config.localPricesPath);
-        syncPrices(db, prices);
-        const r = await ingestFiles(
-          db,
-          sources.get(root) ?? ensureSource(db, root),
-          root.rootPath,
-          paths,
-          prices.table,
-        );
-        bus.emit("ingest.status", { running: false, files: paths.length, errors: r.errors });
-        console.log(
-          `${new Date().toISOString()} ${root.rootPath}: +${r.newRequests} requests, ${r.errors} errors`,
-        );
-      }).catch((e) => console.error(`ingest failed: ${(e as Error).message}`)),
+      void ingest
+        .ingestPaths(root, paths)
+        .then((r) =>
+          console.log(
+            `${new Date().toISOString()} ${root.rootPath}: +${r.newRequests} requests, ${r.errors} errors`,
+          ),
+        )
+        .catch((e) => console.error(`ingest failed: ${(e as Error).message}`)),
   });
   console.log(`watching ${roots.length} root(s); Ctrl+C to stop`);
   process.on("SIGINT", () => {

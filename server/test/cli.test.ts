@@ -234,3 +234,38 @@ test("a scan killed mid-file leaves rollups that match requests after the next s
   expect(sums.k).toBe(sums.r);
   expect(sums.r).toBe(60_000 + 3);
 });
+
+test("serve answers health while it scans, then serves the API", async () => {
+  const e = env();
+  const port = String(40000 + Math.floor(Math.random() * 10000));
+  const child = Bun.spawn(["bun", "server/src/cli.ts", "serve"], {
+    env: { TZ: "UTC", ...process.env, ...e, TD_PORT: port },
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  try {
+    const out = await readUntil(child.stdout, /watching/);
+    expect(out).toContain(`dashboard: http://127.0.0.1:${port}`);
+    expect(out).toContain("+3 requests");
+    const get = (path: string) => fetch(`http://127.0.0.1:${port}${path}`);
+    expect(await (await get("/api/health")).json()).toMatchObject({ ok: true, protocol: 1 });
+    expect(await (await get("/api/v1/summary")).json()).toMatchObject({ requests: 3 });
+  } finally {
+    child.kill();
+    await child.exited;
+  }
+});
+
+test("serve on a busy port exits 1 with a clear message", async () => {
+  const e = env();
+  const busy = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("x") });
+  try {
+    const r = Bun.spawnSync(["bun", "server/src/cli.ts", "serve"], {
+      env: { TZ: "UTC", ...process.env, ...e, TD_PORT: String(busy.port) },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr.toString()).toContain(`port ${busy.port} in use (set TD_PORT)`);
+  } finally {
+    busy.stop(true);
+  }
+});
