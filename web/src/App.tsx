@@ -6,7 +6,6 @@ import { presetRange, type Range, type RangePreset } from "./format";
 import { useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
 import { Plan } from "./views/Plan";
-import { SessionDetail } from "./views/SessionDetail";
 import { Sessions } from "./views/Sessions";
 import { Status } from "./views/Status";
 
@@ -45,7 +44,7 @@ export function App() {
   const views: Record<View, ReactNode> = {
     overview: <Overview range={range} />,
     plan: <Plan range={range} />,
-    sessions: route.id ? <SessionDetail id={route.id} /> : <Sessions range={range} />,
+    sessions: <Sessions range={range} id={route.id} />,
     status: <Status />,
   };
   const unpriced = status.data?.unpricedModels ?? [];

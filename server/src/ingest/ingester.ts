@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { relative, sep } from "node:path";
 import { bus } from "../events";
 import { type PriceTable, priceRequest } from "../pricing/engine";
@@ -54,6 +55,10 @@ function statements(db: Database) {
          session_id = COALESCE(session_id, ?) WHERE id = ?`,
     ),
     finishFile: db.query("UPDATE files SET size = ?, last_ingest_at = ? WHERE id = ?"),
+    agentKnown: db.query<{ one: number }, [string]>("SELECT 1 one FROM agents WHERE agent_id = ?"),
+    agent: db.query<unknown, [string, string | null, string | null]>(
+      "INSERT OR IGNORE INTO agents (agent_id, agent_type, description) VALUES (?, ?, ?)",
+    ),
     fileError: db.query(
       "UPDATE files SET error_count = error_count + 1, last_error = ? WHERE path = ?",
     ),
@@ -135,6 +140,7 @@ export async function ingestFiles(
     const project = rel[0] === "projects" && rel.length > 2 ? rel[1] : null;
     const agentId = SUBAGENT.exec(path)?.[1] ?? null;
     try {
+      if (agentId !== null && !st.agentKnown.get(agentId)) await readAgentMeta(st, path, agentId);
       const cur = await statFile(path);
       const row = st.fileRow.get(path);
       const plan = planRead(
@@ -196,6 +202,20 @@ export async function ingestFiles(
 }
 
 type St = ReturnType<typeof statements>;
+
+const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** Names a sub-agent from its sibling meta file; retried on later passes while the file is missing. */
+async function readAgentMeta(st: St, path: string, agentId: string): Promise<void> {
+  const metaPath = path.replace(/\.jsonl$/, ".meta.json");
+  if (!existsSync(metaPath)) return;
+  try {
+    const m = (await Bun.file(metaPath).json()) as Record<string, unknown> | null;
+    st.agent.run(agentId, text(m?.agentType), text(m?.description));
+  } catch {
+    // Unreadable or half-written meta: only the label suffers, so try again next pass.
+  }
+}
 
 function writeRequest(
   st: St,

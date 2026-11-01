@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import type { ViewProps } from "../App";
 import { api } from "../api";
 import { SessionTable } from "../components/SessionTable";
+import { SessionDetail } from "./SessionDetail";
 
 const PAGE = 50;
 
-export function Sessions({ range }: ViewProps) {
+/** `id` (from the URL) pins a session; without it the most recently active one is shown and followed. */
+export function Sessions({ range, id }: ViewProps & { id?: string }) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
@@ -24,35 +26,59 @@ export function Sessions({ range }: ViewProps) {
     queryFn: () => api<SessionList>("/sessions", params),
     placeholderData: keepPreviousData,
   });
+  // All time, not the period: the active session is shown even if the list filters it out.
+  const latest = useQuery({
+    queryKey: ["sessions", { limit: 1 }],
+    queryFn: () => api<SessionList>("/sessions", { limit: 1 }),
+  });
+  const shown = id ?? latest.data?.items[0]?.id;
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
   return (
-    <section className="card">
-      <div className="toolbar">
-        <h2 style={{ margin: 0, flex: 1 }}>Sessions</h2>
-        <input
-          type="search"
-          placeholder="Search title, project or id"
-          aria-label="Search sessions"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </div>
-      {list.error && <p className="error">{list.error.message}</p>}
-      <SessionTable items={list.data?.items ?? []} />
-      {list.data && total === 0 && <p className="muted empty">No sessions in this period.</p>}
-      <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
-        <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>
-          Previous
-        </button>
-        <span className="muted">
-          Page {page + 1} of {pages} · {total} sessions
-        </span>
-        <button type="button" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>
-          Next
-        </button>
-      </div>
-    </section>
+    <>
+      {id && (
+        <div className="card toolbar">
+          <span style={{ flex: 1 }}>Showing a picked session.</span>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              location.hash = "#/sessions";
+            }}
+          >
+            Back to active session
+          </button>
+        </div>
+      )}
+      {shown && <SessionDetail id={shown} />}
+      {latest.data && !shown && <p className="muted empty">No sessions yet.</p>}
+      <section className="card">
+        <div className="toolbar">
+          <h2 style={{ margin: 0, flex: 1 }}>Sessions</h2>
+          <input
+            type="search"
+            placeholder="Search title, project or id"
+            aria-label="Search sessions"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+        {list.error && <p className="error">{list.error.message}</p>}
+        <SessionTable items={list.data?.items ?? []} selected={shown} />
+        {list.data && total === 0 && <p className="muted empty">No sessions in this period.</p>}
+        <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
+          <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            Previous
+          </button>
+          <span className="muted">
+            Page {page + 1} of {pages} · {total} sessions
+          </span>
+          <button type="button" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>
+            Next
+          </button>
+        </div>
+      </section>
+    </>
   );
 }

@@ -112,6 +112,7 @@ const GROUP_KEY: Record<Exclude<Group, "type">, string> = {
   model: "COALESCE(model, 'unknown')",
   source: "COALESCE(CAST(source_id AS TEXT), '')",
   project: "project",
+  agent: "COALESCE(agent_id, '')", // requests only: daily rollups have no agent
 };
 const TOP = 8;
 
@@ -153,6 +154,15 @@ function labels(db: Database, group: Exclude<Group, "type">, keys: string[]): Ma
       .all();
     for (const s of rows) if (m.has(s.project)) m.set(s.project, basename(s.cwd)); // latest wins
     if (m.has("")) m.set("", "(none)");
+  }
+  if (group === "agent") {
+    const rows = db
+      .query<{ id: string; name: string }, []>(
+        "SELECT agent_id id, COALESCE(description, agent_type) name FROM agents WHERE name IS NOT NULL",
+      )
+      .all();
+    for (const a of rows) if (m.has(a.id)) m.set(a.id, a.name);
+    if (m.has("")) m.set("", "Main agent");
   }
   return m;
 }
@@ -261,7 +271,14 @@ const MAX_WINDOW_BUCKETS = 1000;
  */
 export function getWindowTimeseries(
   db: Database,
-  q: { metric: Metric; group: Group; fromMs: number; toMs: number; stepMs: number },
+  q: {
+    metric: Metric;
+    group: Group;
+    fromMs: number;
+    toMs: number;
+    stepMs: number;
+    sessionId?: string;
+  },
 ): Timeseries {
   const { fromMs, toMs, stepMs } = q;
   if (![fromMs, toMs, stepMs].every(Number.isSafeInteger) || fromMs >= toMs || stepMs <= 0)
@@ -272,9 +289,9 @@ export function getWindowTimeseries(
   const series = buildSeries(db, q.metric, q.group, buckets, {
     table: `(SELECT r.*, COALESCE(s.project, '') project, 1 request_count
       FROM requests r LEFT JOIN sessions s ON s.id = r.session_id
-      WHERE r.ts >= $fromMs AND r.ts < $toMs)`,
+      WHERE r.ts >= $fromMs AND r.ts < $toMs AND ($sessionId IS NULL OR r.session_id = $sessionId))`,
     key: "(ts - $fromMs) / $stepMs", // integer division
-    params: { fromMs, toMs, stepMs },
+    params: { fromMs, toMs, stepMs, sessionId: q.sessionId ?? null },
     at: (i) => Number(i),
   });
   return { buckets, series };
@@ -417,13 +434,16 @@ export function getSession(db: Database, id: string): SessionDetail | null {
     .all(id)
     .map((r) => ({ ...r, unpriced: r.unpriced === 1 }));
   const agents = db
-    .query<Agg & { agentId: string }, [string]>(
-      `SELECT agent_id agentId, COUNT(*) requests, ${TOKEN_COLS}, TOTAL(cost_usd) costUsd
-       FROM requests WHERE session_id = ? AND agent_id IS NOT NULL GROUP BY agent_id ORDER BY agent_id`,
+    .query<Agg & { agentId: string; name: string | null; firstTs: number }, [string]>(
+      `SELECT r.agent_id agentId, COALESCE(a.description, a.agent_type) name, MIN(r.ts) firstTs,
+         COUNT(*) requests, ${TOKEN_COLS}, TOTAL(r.cost_usd) costUsd
+       FROM requests r LEFT JOIN agents a ON a.agent_id = r.agent_id
+       WHERE r.session_id = ? AND r.agent_id IS NOT NULL GROUP BY r.agent_id ORDER BY firstTs, r.agent_id`,
     )
     .all(id)
     .map((a) => ({
       agentId: a.agentId,
+      name: a.name,
       requests: a.requests,
       tokens: TOKENS_OF(a),
       costUsd: a.costUsd,

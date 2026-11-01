@@ -36,7 +36,15 @@ export function sortSessions(items: SessionRow[], col: number, desc: boolean): S
 }
 
 /** `sortable` sorts client-side, so only use it when `items` is the whole list (not one page). */
-export function SessionTable({ items, sortable }: { items: SessionRow[]; sortable?: boolean }) {
+export function SessionTable({
+  items,
+  sortable,
+  selected,
+}: {
+  items: SessionRow[];
+  sortable?: boolean;
+  selected?: string;
+}) {
   const [sort, setSort] = useState({ col: LAST_ACTIVE, desc: true });
   const rows = sortable ? sortSessions(items, sort.col, sort.desc) : items;
   // Text columns start A→Z, numbers and dates start largest/newest first.
@@ -74,7 +82,11 @@ export function SessionTable({ items, sortable }: { items: SessionRow[]; sortabl
             };
             const d = duration(s);
             return (
-              <tr key={s.id} className="link" onClick={open}>
+              <tr
+                key={s.id}
+                className={s.id === selected ? "link selected" : "link"}
+                onClick={open}
+              >
                 <td>
                   <a href={`#/sessions/${encodeURIComponent(s.id)}`}>
                     {s.title ?? s.id.slice(0, 8)}

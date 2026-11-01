@@ -27,7 +27,7 @@ export type Summary = {
 };
 
 export type Metric = "tokens" | "cost" | "requests";
-export type Group = "type" | "model" | "source" | "project";
+export type Group = "type" | "model" | "source" | "project" | "agent";
 export type Bucket = "day" | "week" | "month";
 export type Timeseries = {
   buckets: string[];
@@ -72,7 +72,14 @@ export type RequestRow = {
 export type SessionDetail = {
   session: SessionRow & { ccVersion: string | null; tag: string | null; agentName: string | null };
   requests: RequestRow[];
-  agents: { agentId: string; requests: number; tokens: Tokens; costUsd: number }[];
+  /** `name` is the sub-agent's task description (or type) when Claude Code recorded one. */
+  agents: {
+    agentId: string;
+    name: string | null;
+    requests: number;
+    tokens: Tokens;
+    costUsd: number;
+  }[];
   costStateUsd: number | null;
 };
 

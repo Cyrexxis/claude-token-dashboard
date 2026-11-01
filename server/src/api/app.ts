@@ -119,10 +119,16 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     return c.json(
       getWindowTimeseries(db, {
         metric: oneOf<Metric>("metric", q.metric, ["tokens", "cost", "requests"], "tokens"),
-        group: oneOf<Group>("group", q.group, ["type", "model", "source", "project"], "type"),
+        group: oneOf<Group>(
+          "group",
+          q.group,
+          ["type", "model", "source", "project", "agent"],
+          "type",
+        ),
         fromMs: Number(q.fromMs),
         toMs: Number(q.toMs),
         stepMs: Number(q.stepMs),
+        sessionId: q.sessionId || undefined,
       }),
     );
   });

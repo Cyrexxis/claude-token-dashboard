@@ -11,6 +11,7 @@ const LABELS: Record<Group, string> = {
   model: "Model",
   source: "Source",
   project: "Project",
+  agent: "Agent",
 };
 
 /** Group + bucket selectors over one stacked bar chart. */

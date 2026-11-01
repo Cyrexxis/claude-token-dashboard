@@ -363,9 +363,12 @@ test("session detail: requests by ts, subagent breakdown, costStateUsd", () => {
     at("2026-10-11"),
   ]);
   expect(s?.requests[2]).toMatchObject({ agentId: "x", input: 7, unpriced: false });
+  d.run("insert into agents (agent_id, agent_type) values ('x', 'Explore')");
+  expect(getSession(d, "s1")?.agents[0].name).toBe("Explore"); // no description: falls back to type
   expect(s?.agents).toEqual([
     {
       agentId: "x",
+      name: null,
       requests: 1,
       costUsd: 0.5,
       tokens: {
@@ -520,6 +523,18 @@ test("window timeseries: requests land in their slot; type, project and model gr
   ]);
   expect(getWindowTimeseries(d, { ...q, metric: "requests", group: "model" }).series).toEqual([
     { key: "claude-opus-5-5", label: "claude-opus-5-5", values: [2, 1, 0] },
+  ]);
+  insertRequest(d, { session_id: "s1", agent_id: "a1", ts: t0 + 10 * M, input: 7 });
+  d.run("insert into agents (agent_id, description) values ('a1', 'Review branch')");
+  const bySessionAgent = getWindowTimeseries(d, {
+    ...q,
+    metric: "tokens",
+    group: "agent",
+    sessionId: "s1",
+  });
+  expect(bySessionAgent.series.map((s) => [s.label, s.values])).toEqual([
+    ["Review branch", [0, 0, 7]],
+    ["Main agent", [3, 0, 0]], // the other session's input 4 is filtered out
   ]);
   for (const bad of [
     { ...q, stepMs: 0 },

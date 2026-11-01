@@ -139,6 +139,26 @@ test("subagent file links to parent session with agent_id", async () => {
   expect(session(db)).toMatchObject({ agent_name: "Parent name", project: "-home-u-proj" });
 });
 
+test("sub-agent meta file names the agent; a missing one is retried on the next pass", async () => {
+  const { db, file, ingest } = setup();
+  const a1 = file("s1/subagents/agent-a1.jsonl", [
+    assistant({ messageId: "sub1", isSidechain: true }),
+  ]);
+  file("s1/subagents/agent-a1.meta.json", [
+    JSON.stringify({ agentType: "general-purpose", description: " Review branch " }),
+  ]);
+  const a2 = file("s1/subagents/agent-a2.jsonl", [
+    assistant({ messageId: "sub2", isSidechain: true }),
+  ]);
+  await ingest(a1, a2);
+  file("s1/subagents/agent-a2.meta.json", [JSON.stringify({ agentType: "Explore" })]);
+  await ingest(a2); // transcript unchanged, meta now present
+  expect(all(db, "select * from agents order by agent_id")).toEqual([
+    { agent_id: "a1", agent_type: "general-purpose", description: "Review branch" },
+    { agent_id: "a2", agent_type: "Explore", description: null },
+  ]);
+});
+
 test("custom title wins over an ai-title written after it", async () => {
   const { db, file, ingest } = setup();
   await ingest(file("s1.jsonl", [customTitle("s1", "Mine"), aiTitle("s1", "Auto")]));

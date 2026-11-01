@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import type { SessionDetail as Detail } from "@td/shared";
+import type { SessionDetail as Detail, Group, Timeseries } from "@td/shared";
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -12,10 +13,97 @@ import {
 } from "recharts";
 import { api, HttpError } from "../api";
 import { StatTile } from "../components/StatTile";
-import { SERIES_VARS } from "../components/TimeChart";
+import { SERIES_VARS, TimeChart } from "../components/TimeChart";
 import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
 
-const time = (ms: number) => new Date(ms).toLocaleTimeString();
+const M = 60_000;
+const STEPS = [M, 5 * M, 15 * M, 60 * M, 3 * 60 * M, 24 * 60 * M];
+const STEP_LABEL = ["1-minute", "5-minute", "15-minute", "1-hour", "3-hour", "1-day"];
+/** Smallest slot that keeps a session of this length to at most 60 bars. */
+export const pickStep = (durationMs: number) =>
+  STEPS.find((s) => durationMs / s < 60) ?? (STEPS.at(-1) as number);
+/** Start of the local-time slot holding `ts`, so hour and day slots begin on the clock. */
+export function slotStart(ts: number, step: number): number {
+  const local = -new Date(ts).getTimezoneOffset() * M;
+  return ts - ((ts + local) % step);
+}
+const hhmm = (b: string) =>
+  new Date(Number(b)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const dayHour = (b: string) =>
+  new Date(Number(b)).toLocaleString(undefined, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** Tokens or cost over the session's lifetime, sub-agents included; slot size follows its length. */
+function SessionSeries({ s }: { s: Detail["session"] }) {
+  const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
+  const [group, setGroup] = useState<Group>("type");
+  const first = s.firstTs ?? 0;
+  const last = s.lastTs ?? first;
+  const stepMs = pickStep(last - first);
+  const params = {
+    sessionId: s.id,
+    fromMs: slotStart(first, stepMs),
+    toMs: last + 1,
+    stepMs,
+    metric,
+    group,
+  };
+  const q = useQuery({
+    queryKey: ["session", s.id, "timeseries", params],
+    queryFn: () => api<Timeseries>("/plan/timeseries", params),
+    // Keep the chart while a live session grows, but never show another session's data.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === s.id ? prev : undefined),
+  });
+  const multiDay = new Date(first).toDateString() !== new Date(last).toDateString();
+  return (
+    <section className="card">
+      <div className="toolbar">
+        <h2 style={{ margin: 0, flex: 1 }}>
+          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session
+        </h2>
+        <div className="tabs" role="tablist">
+          {(["tokens", "cost"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={m === metric}
+              onClick={() => setMetric(m)}
+            >
+              {m === "tokens" ? "Tokens" : "Cost"}
+            </button>
+          ))}
+        </div>
+        <label>
+          Group by{" "}
+          <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
+            <option value="type">Token type</option>
+            <option value="agent">Agent</option>
+          </select>
+        </label>
+      </div>
+      {q.error && <p className="error">{q.error.message}</p>}
+      {!q.data && !q.error && <p className="muted">Loading…</p>}
+      {q.data && (
+        <TimeChart
+          // Remount per metric and group so the cache-read default applies to tokens by type only.
+          key={`${metric}-${group}`}
+          data={q.data}
+          kind="bar"
+          height={320}
+          format={metric === "cost" ? fmtUsd : fmtTokens}
+          label={multiDay ? dayHour : hhmm}
+          // Cache reads dwarf every other type and would flatten the chart.
+          defaultHidden={metric === "tokens" && group === "type" ? ["cacheRead"] : []}
+        />
+      )}
+      <p className="muted note">Includes sub-agents; {STEP_LABEL[STEPS.indexOf(stepMs)]} slots.</p>
+    </section>
+  );
+}
 const CACHE_SERIES = [
   { key: "cacheRead", label: "Cache read", color: SERIES_VARS[0] },
   { key: "cacheWrite", label: "Cache write", color: SERIES_VARS[1] },
@@ -31,7 +119,6 @@ export function SessionDetail({ id }: { id: string }) {
     return (
       <section className="card">
         <h1>Session not found</h1>
-        <a href="#/sessions">Back to sessions</a>
       </section>
     );
   if (q.error) return <p className="error">{q.error.message}</p>;
@@ -39,12 +126,15 @@ export function SessionDetail({ id }: { id: string }) {
 
   const { session: s, requests, agents, costStateUsd } = q.data;
   const t = s.tokens;
-  const cache = requests.map((r, i) => ({
-    n: i + 1,
-    cacheRead: r.cacheRead,
-    cacheWrite: r.cacheWrite5m + r.cacheWrite1h,
-    input: r.input,
-  }));
+  // The main agent's context per request: everything it sent, cached or not.
+  const context = requests
+    .filter((r) => r.agentId === null)
+    .map((r, i) => ({
+      n: i + 1,
+      cacheRead: r.cacheRead,
+      cacheWrite: r.cacheWrite5m + r.cacheWrite1h,
+      input: r.input,
+    }));
   const axis = {
     stroke: "var(--axis)",
     tick: { fill: "var(--muted)", fontSize: 12 },
@@ -53,9 +143,6 @@ export function SessionDetail({ id }: { id: string }) {
 
   return (
     <>
-      <p>
-        <a href="#/sessions">← Sessions</a>
-      </p>
       <section className="card">
         <h1>{s.title ?? s.id}</h1>
         <p className="muted" style={{ margin: 0 }}>
@@ -96,11 +183,11 @@ export function SessionDetail({ id }: { id: string }) {
           />
         )}
       </div>
-      {cache.length > 1 && (
+      {context.length > 1 && (
         <section className="card">
-          <h2>Cache behaviour per request</h2>
+          <h2>Context window of the main agent per request</h2>
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={cache}>
+            <AreaChart data={context}>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
               <XAxis dataKey="n" {...axis} />
               <YAxis tickFormatter={fmtTokens} width={64} axisLine={false} {...axis} />
@@ -145,6 +232,7 @@ export function SessionDetail({ id }: { id: string }) {
           </ResponsiveContainer>
         </section>
       )}
+      <SessionSeries s={s} />
       {agents.length > 0 && (
         <section className="card">
           <h2>Subagents</h2>
@@ -162,7 +250,9 @@ export function SessionDetail({ id }: { id: string }) {
               <tbody>
                 {agents.map((a) => (
                   <tr key={a.agentId}>
-                    <td className="mono">{a.agentId}</td>
+                    <td title={a.agentId} className={a.name ? undefined : "mono"}>
+                      {a.name ?? a.agentId}
+                    </td>
                     <td className="num">{a.requests}</td>
                     <td className="num">{fmtTokens(a.tokens.output)}</td>
                     <td className="num">{fmtTokens(a.tokens.cacheRead)}</td>
@@ -174,44 +264,6 @@ export function SessionDetail({ id }: { id: string }) {
           </div>
         </section>
       )}
-      <section className="card">
-        <h2>Requests</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Model</th>
-                <th>Agent</th>
-                <th className="num">Input</th>
-                <th className="num">Output</th>
-                <th className="num">Cache read</th>
-                <th className="num">Write 5m</th>
-                <th className="num">Write 1h</th>
-                <th className="num">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((r) => (
-                <tr key={r.id}>
-                  <td>{time(r.ts)}</td>
-                  <td>
-                    {r.model ?? "—"}
-                    {r.speed && r.speed !== "standard" && ` (${r.speed})`}
-                  </td>
-                  <td className="mono">{r.agentId ?? "main"}</td>
-                  <td className="num">{fmtTokens(r.input)}</td>
-                  <td className="num">{fmtTokens(r.output)}</td>
-                  <td className="num">{fmtTokens(r.cacheRead)}</td>
-                  <td className="num">{fmtTokens(r.cacheWrite5m)}</td>
-                  <td className="num">{fmtTokens(r.cacheWrite1h)}</td>
-                  <td className="num">{r.unpriced ? "unpriced" : fmtUsd(r.costUsd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </>
   );
 }
