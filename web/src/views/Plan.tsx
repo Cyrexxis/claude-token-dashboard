@@ -47,6 +47,12 @@ const when = (ms: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+const hourTick = (ms: number) =>
+  new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const dayTick = (ms: number) =>
+  new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+const dayTime = (ms: number) =>
+  new Date(ms).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const CHAT_NOTE =
   "Plan % also counts claude.ai chat and Cowork, so this reads low on days you also chat.";
 
@@ -76,7 +82,10 @@ function WindowCard({ w }: { w: PlanWindow }) {
       <div className="bar" role="presentation">
         <span style={{ width: `${Math.min(w.peakPercent, 100)}%` }} />
       </div>
-      <div className="sub">resets in {fmtDuration(Math.max(w.resetsAt - now, 0))}</div>
+      <div className="sub">
+        resets in {fmtDuration(Math.max(w.resetsAt - now, 0))} ·{" "}
+        {w.kind === "seven_day" ? dayTime(w.resetsAt) : hourTick(w.resetsAt)}
+      </div>
       {w.usdPerPercent !== null && w.tokensPerPercent !== null && (
         <div className="sub">
           {fmtUsd(w.usdPerPercent)} · {fmtTokens(w.tokensPerPercent)} tokens per 1 % (Claude Code
@@ -111,22 +120,25 @@ function useWindowPoints(w: PlanWindow) {
   });
 }
 
-const hourTick = (ms: number) =>
-  new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-const dayTick = (ms: number) =>
-  new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-
 /** The 5-hour view also shows the weekly line; the weekly view shows only itself. */
 function Timeline({ w, current }: { w: PlanWindow; current: PlanWindow[] }) {
   const now = useNow();
   // The weekly window's range also holds the weekly reading that carries into a 5-hour window.
   const points = useWindowPoints(current.find((c) => c.kind === "seven_day") ?? w);
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set(["seven_day"]));
   if (points.error) return <p className="error">{points.error.message}</p>;
   if (!points.data) return <p className="muted">Loading…</p>;
   const start = w.startMs ?? 0;
   const rows = mergeReadings(points.data.points, current, start, w.resetsAt);
   const shown = w.kind === "five_hour" ? KINDS : [w.kind];
   const axis = axisProps;
+  const color = (k: string) => seriesColor(k, (KINDS as readonly string[]).indexOf(k));
+  const toggle = (k: string) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
   return (
     <ResponsiveContainer width="100%" height={280}>
       <LineChart data={rows}>
@@ -146,7 +158,28 @@ function Timeline({ w, current }: { w: PlanWindow; current: PlanWindow[] }) {
           formatter={(v) => pct(Number(v))}
           contentStyle={tooltipStyle}
         />
-        <Legend />
+        {shown.length > 1 ? (
+          // Same clickable legend as TimeChart, so the weekly line can be switched off.
+          <Legend
+            content={() => (
+              <div className="legend">
+                {shown.map((k) => (
+                  <button
+                    type="button"
+                    key={k}
+                    aria-pressed={!hidden.has(k)}
+                    onClick={() => toggle(k)}
+                  >
+                    <span className="swatch" style={{ background: color(k) }} />
+                    {kindLabel(k)}
+                  </button>
+                ))}
+              </div>
+            )}
+          />
+        ) : (
+          <Legend />
+        )}
         <ReferenceLine
           x={now}
           stroke="var(--muted)"
@@ -159,7 +192,9 @@ function Timeline({ w, current }: { w: PlanWindow; current: PlanWindow[] }) {
             dataKey={k}
             name={kindLabel(k)}
             type="stepAfter"
-            stroke={seriesColor(k, (KINDS as readonly string[]).indexOf(k))}
+            stroke={color(k)}
+            // The weekly view has a plain legend, so nothing can be hidden there.
+            hide={shown.length > 1 && hidden.has(k)}
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
@@ -192,17 +227,20 @@ function WindowSessions({ w }: { w: PlanWindow }) {
 const STEP_MS: Record<Kind, number> = { five_hour: 5 * 60_000, seven_day: 3 * 3_600_000 };
 const GROUPS: Group[] = ["type", "model", "source", "project"];
 const slotLabel = (kind: Kind) => (b: string) =>
-  kind === "five_hour"
-    ? hourTick(Number(b))
-    : new Date(Number(b)).toLocaleString(undefined, {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+  kind === "five_hour" ? hourTick(Number(b)) : dayTime(Number(b));
 
 /** Tokens or cost in the current window, 5-minute slots for 5-hour, 3-hour slots for weekly. */
-function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: PlanWindow | null }) {
-  const [tabKind, setKind] = useState<Kind>("five_hour");
+function WindowSeries({
+  current,
+  picked,
+  tabKind,
+  setKind,
+}: {
+  current: PlanWindow[];
+  picked: PlanWindow | null;
+  tabKind: Kind;
+  setKind: (k: Kind) => void;
+}) {
   const kind = picked && isTimedPlanKind(picked.kind) ? picked.kind : tabKind;
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const [group, setGroup] = useState<Group>("type");
@@ -255,9 +293,8 @@ const perPct = (v: number | null, f: (n: number) => string) => (v === null ? "�
 
 export function Plan({ range }: ViewProps) {
   const windows = usePlanWindows(range);
-  const [chartKind, setChartKind] = useState<Kind>("five_hour");
-  const [tableKind, setTableKind] = useState<Kind>("five_hour");
-  const [listKind, setListKind] = useState<Kind>("five_hour");
+  // One 5-hour/weekly choice drives every tab group on the page.
+  const [kind, setKind] = useState<Kind>("five_hour");
   // The pick is an identity: the shown window always comes from the latest fetch.
   const [pickedId, setPickedId] = useState<WindowId | null>(null);
   if (windows.error) return <p className="error">{windows.error.message}</p>;
@@ -272,13 +309,13 @@ export function Plan({ range }: ViewProps) {
       </p>
     );
   const win = (k: Kind) => current.find((w) => w.kind === k && w.startMs !== null);
-  const chartWin = picked ?? win(chartKind);
+  const chartWin = picked ?? win(kind);
   // A picked window brings its own readings; a 5-hour one also shows the weekly window it overlaps.
   const chartCurrent = picked
     ? [picked, ...overlappingWeekly(picked, [...current, ...past]).slice(0, 1)]
     : current;
-  const tableWin = picked ?? win(tableKind);
-  const listed = [...current, ...past].filter((w) => w.kind === listKind && w.startMs !== null);
+  const tableWin = picked ?? win(kind);
+  const listed = [...current, ...past].filter((w) => w.kind === kind && w.startMs !== null);
   const none = (k: Kind) => <p className="muted empty">No current {kindLabel(k)} window.</p>;
   return (
     <>
@@ -303,22 +340,22 @@ export function Plan({ range }: ViewProps) {
       <section className="card">
         <div className="toolbar">
           <h2 className="card-title">Plan usage in the {picked ? "selected" : "current"} window</h2>
-          {!picked && <WindowTabs kind={chartKind} onChange={setChartKind} />}
+          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
         </div>
-        {chartWin ? <Timeline w={chartWin} current={chartCurrent} /> : none(chartKind)}
+        {chartWin ? <Timeline w={chartWin} current={chartCurrent} /> : none(kind)}
       </section>
-      <WindowSeries current={current} picked={picked} />
+      <WindowSeries current={current} picked={picked} tabKind={kind} setKind={setKind} />
       <section className="card">
         <div className="toolbar">
           <h2 className="card-title">Sessions in the {picked ? "selected" : "current"} window</h2>
-          {!picked && <WindowTabs kind={tableKind} onChange={setTableKind} />}
+          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
         </div>
-        {tableWin ? <WindowSessions w={tableWin} /> : none(tableKind)}
+        {tableWin ? <WindowSessions w={tableWin} /> : none(kind)}
       </section>
       <section className="card">
         <div className="toolbar">
           <h2 className="card-title">Windows</h2>
-          <WindowTabs kind={listKind} onChange={setListKind} />
+          <WindowTabs kind={kind} onChange={setKind} />
         </div>
         {listed.length ? (
           <div className="table-wrap">
@@ -373,7 +410,7 @@ export function Plan({ range }: ViewProps) {
             </table>
           </div>
         ) : (
-          <p className="muted">No {kindLabel(listKind)} windows in this period.</p>
+          <p className="muted">No {kindLabel(kind)} windows in this period.</p>
         )}
         <p className="muted note">
           Pick a window to show it in the charts and sessions. Per-1 % figures are Claude Code only,
