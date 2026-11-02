@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type Prices, type Summary, totalTokens } from "@td/shared";
 import { api } from "../api";
+import { BreakdownChart } from "../components/BreakdownChart";
 import { SeriesView } from "../components/SeriesView";
 import { StatTile } from "../components/StatTile";
 import { fmtTokens, fmtUsd, rangeDays } from "../format";
@@ -80,6 +81,10 @@ export function Overview({ range }: ViewProps) {
         title="API-equivalent cost at historical prices"
         marks={priceMarks}
       />
+      <div className="pair">
+        <BreakdownChart range={range} by="project" title="By project" />
+        <BreakdownChart range={range} by="model" title="By model" />
+      </div>
       {prices.error && (
         <p className="muted note">Price changes unavailable: {prices.error.message}</p>
       )}

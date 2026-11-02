@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { PROTOCOL } from "@td/shared";
 import {
   BadRequest,
+  getBreakdown,
   getPrices,
   getSession,
   getStatus,
@@ -110,6 +111,18 @@ test("day buckets are contiguous and zero-filled", () => {
   expect(t.series).toEqual([
     { key: "claude-opus-5-5", label: "claude-opus-5-5", values: [0, 1, 0, 2, 0] },
   ]);
+});
+
+test("breakdown: one bucket per top model, largest first, rest in Other, split by type", () => {
+  const d = db();
+  for (let i = 1; i <= 9; i++) insertRequest(d, { model: `m${i}`, input: i, output: 10 * i });
+  rebuildRollups(d, "all");
+  const t = getBreakdown(d, { metric: "tokens", by: "model", group: "type", from: null, to: null });
+  expect(t.buckets).toEqual(["m9", "m8", "m7", "m6", "m5", "m4", "m3", "m2", "Other"]);
+  const input = t.series.find((s) => s.key === "input");
+  const output = t.series.find((s) => s.key === "output");
+  expect(input?.values).toEqual([9, 8, 7, 6, 5, 4, 3, 2, 1]);
+  expect(output?.values).toEqual([90, 80, 70, 60, 50, 40, 30, 20, 10]);
 });
 
 test("week buckets start on Monday; month on the 1st", () => {

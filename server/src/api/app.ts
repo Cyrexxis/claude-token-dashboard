@@ -22,6 +22,7 @@ import { SERVER_VERSION } from "../version";
 import { hostGuard, originGuard } from "./guards";
 import {
   BadRequest,
+  getBreakdown,
   getPrices,
   getSession,
   getStatus,
@@ -102,6 +103,17 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
         metric: oneOf("metric", q.metric, METRICS, "tokens"),
         group: oneOf("group", q.group, ROLLUP_GROUPS, "type"),
         bucket: oneOf("bucket", q.bucket, BUCKETS, "day"),
+      }),
+    );
+  });
+  v1.get("/breakdown", (c) => {
+    const q = c.req.query();
+    return c.json(
+      getBreakdown(db, {
+        ...parseRange(q),
+        metric: oneOf("metric", q.metric, METRICS, "tokens"),
+        by: oneOf("by", q.by, ["project", "model"] as const, "project"),
+        group: oneOf("group", q.group, ROLLUP_GROUPS, "type"),
       }),
     );
   });

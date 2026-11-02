@@ -160,6 +160,12 @@ button.primary {
   padding: 16px;
   margin-bottom: 16px;
 }
+/* Two cards side by side; they stack once each would be under 360px. */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 0 16px;
+}
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -263,6 +269,10 @@ textarea {
 .empty {
   padding: 40px 0;
   text-align: center;
+}
+/* Recharts renders the legend after the tooltip, so it would paint over it. */
+.recharts-tooltip-wrapper {
+  z-index: 1;
 }
 .chart-tip {
   background: var(--surface);

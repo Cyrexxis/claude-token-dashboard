@@ -266,6 +266,36 @@ export function getTimeseries(
   return { buckets, series };
 }
 
+/**
+ * Range totals with one bucket per top `by` key (largest first, then "Other"), split by `group`.
+ * Buckets are display labels; same shape as a timeseries so the same chart draws it.
+ */
+export function getBreakdown(
+  db: Database,
+  q: { metric: Metric; by: "project" | "model"; group: RollupGroup } & Range,
+): Timeseries {
+  const params = { from: q.from, to: q.to };
+  const table = `daily_rollups WHERE ${DAY_WHERE}`;
+  const ranked = db
+    .query<{ k: string }, [typeof params]>(
+      `SELECT ${GROUP_KEY[q.by]} k FROM ${table} GROUP BY k ORDER BY TOTAL(${VALUE[q.metric]}) DESC, k`,
+    )
+    .all(params)
+    .map((r) => r.k);
+  const top = ranked.slice(0, TOP);
+  const index = new Map(top.map((k, i) => [k, i]));
+  const names = labels(db, q.by, top);
+  const buckets = top.map((k) => names.get(k) ?? k);
+  if (ranked.length > TOP) buckets.push("Other");
+  const series = buildSeries(db, q.metric, q.group, buckets, {
+    table,
+    key: GROUP_KEY[q.by],
+    params,
+    at: (k) => index.get(String(k)) ?? (ranked.length > TOP ? TOP : undefined),
+  });
+  return { buckets, series };
+}
+
 const MAX_WINDOW_BUCKETS = 1000;
 
 /**

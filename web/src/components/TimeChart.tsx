@@ -25,6 +25,8 @@ type Props = {
   defaultHidden?: string[];
   /** Bucket → axis and tooltip text; defaults to "Oct 14". */
   label?: (bucket: string) => string;
+  /** Bars run left to right, buckets down the side (bar charts only). */
+  horizontal?: boolean;
 };
 
 type TipProps = {
@@ -67,6 +69,7 @@ export function TimeChart({
   height = 300,
   defaultHidden = [],
   label = shortDay,
+  horizontal = false,
 }: Props) {
   const [hidden, setHidden] = useState(() => new Set(defaultHidden));
   if (!data.series.length) return <p className="muted empty">No data in this period.</p>;
@@ -90,9 +93,25 @@ export function TimeChart({
   const axis = axisProps;
   const common = (
     <>
-      <CartesianGrid vertical={false} stroke="var(--grid)" />
-      <XAxis dataKey="bucket" tickFormatter={label} minTickGap={24} {...axis} />
-      <YAxis tickFormatter={format} width={64} axisLine={false} {...axis} />
+      <CartesianGrid vertical={horizontal} horizontal={!horizontal} stroke="var(--grid)" />
+      {horizontal ? (
+        <>
+          <XAxis type="number" tickFormatter={format} {...axis} />
+          <YAxis
+            type="category"
+            dataKey="bucket"
+            tickFormatter={label}
+            width={140}
+            interval={0}
+            {...axis}
+          />
+        </>
+      ) : (
+        <>
+          <XAxis dataKey="bucket" tickFormatter={label} minTickGap={24} {...axis} />
+          <YAxis tickFormatter={format} width={64} axisLine={false} {...axis} />
+        </>
+      )}
       <Tooltip
         content={<Tip format={format} fmtLabel={label} />}
         cursor={{ fill: "var(--hover)", stroke: "var(--axis)" }}
@@ -131,7 +150,7 @@ export function TimeChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       {kind === "bar" ? (
-        <BarChart data={rows} barCategoryGap="20%">
+        <BarChart data={rows} barCategoryGap="20%" layout={horizontal ? "vertical" : "horizontal"}>
           {common}
           {shown.map(({ s, j }) => (
             <Bar
@@ -142,7 +161,7 @@ export function TimeChart({
               fill={seriesColor(s.key, j)}
               stroke="var(--surface)"
               strokeWidth={1}
-              radius={j === last ? [4, 4, 0, 0] : 0}
+              radius={j === last ? (horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0}
               isAnimationActive={false}
             />
           ))}
