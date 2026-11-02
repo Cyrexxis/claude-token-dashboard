@@ -9,7 +9,7 @@ const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number) => 
   resetsAt,
 });
 
-test("mergeReadings: shared rows, values carried forward, other windows ignored, ends at last reading", () => {
+test("mergeReadings: shared rows, values carried forward, other windows ignored, ends at last reading within the window", () => {
   const start = 10 * H;
   const cur = [
     { kind: "five_hour", resetsAt: 15 * H },
@@ -22,9 +22,11 @@ test("mergeReadings: shared rows, values carried forward, other windows ignored,
       pt(11 * H, "five_hour", 10, 15 * H),
       pt(12 * H, "seven_day", 7, 100 * H),
       pt(13 * H, "five_hour", 20, 15 * H),
+      pt(16 * H, "seven_day", 9, 100 * H), // after the 5h window ends: dropped
     ],
     cur,
     start,
+    15 * H,
   );
   expect(rows).toEqual([
     { ts: 10 * H, seven_day: 5 },

@@ -124,7 +124,7 @@ function Timeline({ w, current }: { w: PlanWindow; current: PlanWindow[] }) {
   if (points.error) return <p className="error">{points.error.message}</p>;
   if (!points.data) return <p className="muted">Loading…</p>;
   const start = w.startMs ?? 0;
-  const rows = mergeReadings(points.data.points, current, start);
+  const rows = mergeReadings(points.data.points, current, start, w.resetsAt);
   const shown = w.kind === "five_hour" ? KINDS : [w.kind];
   const axis = axisProps;
   return (
