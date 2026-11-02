@@ -1,15 +1,21 @@
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ApiError } from "@td/shared";
 import { useEffect } from "react";
 import { keysToInvalidate, LIVE_EVENTS } from "./events";
 
 export class HttpError extends Error {
+  override name = "HttpError";
   constructor(
-    public status: number,
-    public body: ApiError | null,
+    readonly status: number,
+    readonly body: ApiError | null,
   ) {
     super(body?.message ?? `HTTP ${status}`);
   }
+}
+
+/** The request never got a response: the server is not running or not reachable. */
+export class NetworkError extends Error {
+  override name = "NetworkError";
 }
 
 /** GET (or `init`) `/api/v1<path>`; undefined/null params are dropped. */
@@ -21,14 +27,27 @@ export async function api<T>(
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params ?? {}))
     if (v !== undefined && v !== null) qs.set(k, String(v));
-  const res = await fetch(`/api/v1${path}${qs.size ? `?${qs}` : ""}`, init);
-  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
-  if (!res.ok) throw new HttpError(res.status, body);
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}${qs.size ? `?${qs}` : ""}`, init);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    throw new NetworkError(e instanceof Error ? e.message : String(e));
+  }
+  let body: unknown = null;
+  if (res.headers.get("content-type")?.includes("json"))
+    try {
+      body = await res.json();
+    } catch {
+      throw new HttpError(res.status, null); // a JSON content type with a broken body
+    }
+  if (!res.ok) throw new HttpError(res.status, body as ApiError | null);
   return body as T;
 }
 
 /** Turns SSE events into query invalidations; refetches everything after a reconnect. */
-export function useLiveEvents(client: QueryClient = useQueryClient()): void {
+export function useLiveEvents(): void {
+  const client = useQueryClient();
   useEffect(() => {
     const es = new EventSource("/api/v1/events");
     let dropped = false;

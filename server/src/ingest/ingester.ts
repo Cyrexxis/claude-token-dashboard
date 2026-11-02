@@ -23,15 +23,15 @@ export type IngestResult = {
 };
 
 export function ensureSource(db: Database, root: Root): number {
-  return (
-    db
-      .query<{ id: number }, [string, string, string | null, string]>(
-        `INSERT INTO sources (kind, host, distro, root_path) VALUES (?, ?, ?, ?)
-         ON CONFLICT(root_path) DO UPDATE SET kind = excluded.kind, host = excluded.host, distro = excluded.distro
-         RETURNING id`,
-      )
-      .get(root.kind, root.host, root.distro, root.rootPath)?.id ?? 0
-  );
+  const row = db
+    .query<{ id: number }, [string, string, string | null, string]>(
+      `INSERT INTO sources (kind, host, distro, root_path) VALUES (?, ?, ?, ?)
+       ON CONFLICT(root_path) DO UPDATE SET kind = excluded.kind, host = excluded.host, distro = excluded.distro
+       RETURNING id`,
+    )
+    .get(root.kind, root.host, root.distro, root.rootPath);
+  if (!row) throw new Error(`insert source ${root.rootPath} returned no row`);
+  return row.id;
 }
 
 const SUBAGENT = /[/\\]subagents[/\\]agent-([^/\\]+)\.jsonl$/;
@@ -148,7 +148,8 @@ export async function ingestFiles(
         cur,
       );
       if (plan.skip) continue;
-      const fileId = row?.id ?? st.insertFile.get(sourceId, path)?.id ?? 0;
+      const fileId = row?.id ?? st.insertFile.get(sourceId, path)?.id;
+      if (fileId === undefined) throw new Error("insert file returned no row");
       st.startFile.run(cur.fileKey, cur.mtimeMs, plan.start, fileId);
 
       for await (const chunk of readLines(path, plan.start, cur.size)) {
@@ -188,10 +189,12 @@ export async function ingestFiles(
       }
       st.finishFile.run(cur.size, Date.now(), fileId);
     } catch (e) {
-      errors++;
       st.fileError.run((e as Error).message, path); // no-op when the file was never seen
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT")
+      // Deleted between listing and reading: normal cleanup, not an error.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        errors++;
         console.error(`ingest ${path}: ${(e as Error).message}`);
+      }
     }
   }
 

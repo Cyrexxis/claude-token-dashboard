@@ -85,7 +85,8 @@ export function SessionTable({
               <tr
                 key={s.id}
                 className={s.id === selected ? "link selected" : "link"}
-                onClick={open}
+                // Mouse convenience; a click on the link itself navigates on its own.
+                onClick={(e) => (e.target as Element).closest("a") || open()}
               >
                 <td>
                   <a href={`#/sessions/${encodeURIComponent(s.id)}`}>

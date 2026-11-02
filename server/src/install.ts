@@ -29,15 +29,18 @@ export function unitPath(env: InstallDeps["env"]): string {
   return join(base, "systemd", "user", `${SERVICE}.service`);
 }
 
+/** Inside a quoted systemd value: `\` and `"` are escapes, `%` starts a specifier. */
+const esc = (v: string) => v.replace(/[\\"]/g, "\\$&").replace(/%/g, "%%");
+
 export function unitFile(o: { bunPath: string; repoDir: string; env: InstallDeps["env"] }): string {
   const envLines = UNIT_ENV.filter((k) => o.env[k] !== undefined).map(
-    (k) => `Environment="${k}=${o.env[k]}"\n`,
+    (k) => `Environment="${esc(`${k}=${o.env[k]}`)}"\n`,
   );
   return `[Unit]
 Description=Token Dashboard
 
 [Service]
-ExecStart="${o.bunPath}" "${o.repoDir}/server/src/cli.ts" serve
+ExecStart="${esc(o.bunPath)}" "${esc(o.repoDir)}/server/src/cli.ts" serve
 WorkingDirectory=${o.repoDir}
 ${envLines.join("")}Restart=on-failure
 

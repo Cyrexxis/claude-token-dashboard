@@ -57,6 +57,7 @@ function Sources({ status }: { status: StatusData }) {
     status.ingest.running || (clickedAt !== null && (status.ingest.lastRunAt ?? 0) < clickedAt);
   const rescan = useMutation({
     mutationFn: (id: number) => api(`/sources/${id}/rescan`, undefined, { method: "POST" }),
+    onError: () => setClickedAt(null), // no run will follow a failed POST
   });
   return (
     <section className="card">
@@ -161,7 +162,7 @@ function PriceEditor() {
         </div>
         {errors.length > 0 && (
           <ul className="error">
-            {errors.map((e) => (
+            {[...new Set(errors)].map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>

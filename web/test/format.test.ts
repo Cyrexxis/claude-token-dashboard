@@ -48,6 +48,11 @@ test("parseHash", () => {
   expect(parseHash("#/nope")).toEqual({ view: "overview" });
 });
 
+test("parseHash survives a malformed escape", () => {
+  expect(parseHash("#/sessions/%E0")).toEqual({ view: "sessions", id: "%E0" });
+  expect(parseHash("#/sessions/a%2Fb")).toEqual({ view: "sessions", id: "a/b" });
+});
+
 test("projectLabel and sourceLabel", () => {
   expect(projectLabel("-home-u-demo", "/home/u/demo")).toBe("demo");
   expect(projectLabel("-x", "C:\\Users\\u\\win-proj")).toBe("win-proj");

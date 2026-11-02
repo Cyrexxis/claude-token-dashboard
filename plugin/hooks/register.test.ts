@@ -7,11 +7,15 @@ const CONN = JSON.stringify({ url: URL_, protocol: 1 });
 type Sent = { url: string; method?: string; headers?: Record<string, string>; body?: unknown };
 
 /** The engine beneath the mod: connection file, server, store and clock, all in memory. */
-function world(on: On, opts: { conn?: string | null; up?: boolean; queue?: string[] } = {}) {
+function world(
+  on: On,
+  opts: { conn?: string | null; up?: boolean; queue?: string[]; health?: string } = {},
+) {
   const sent: Sent[] = [];
   const toasts: string[] = [];
   const store: Record<string, unknown> = opts.queue ? { queue: opts.queue } : {};
   const server = { up: opts.up ?? true };
+  const file = { conn: opts.conn === undefined ? CONN : opts.conn };
   const clock = mock.clock(on, { now: 1_000 });
   mock.env(on, { HOME: "/home/u" });
   on("store.get", (_, e) => ({ value: store[e.key] }));
@@ -20,10 +24,9 @@ function world(on: On, opts: { conn?: string | null; up?: boolean; queue?: strin
     return { value: undefined };
   });
   on("fs.read", (_, e) => {
-    const conn = opts.conn === undefined ? CONN : opts.conn;
-    if (e.path !== "/home/u/.config/token-dashboard/server.json" || conn === null)
+    if (e.path !== "/home/u/.config/token-dashboard/server.json" || file.conn === null)
       throw new Error("ENOENT");
-    return { value: conn };
+    return { value: file.conn };
   });
   on("http.fetch", (_, e) => {
     if (!server.up) throw new Error("ECONNREFUSED");
@@ -35,7 +38,7 @@ function world(on: On, opts: { conn?: string | null; up?: boolean; queue?: strin
       body: init.body ? JSON.parse(init.body) : undefined,
     });
     const text = e.url.endsWith("/api/health")
-      ? JSON.stringify({ ok: true, version: "0.3.0", protocol: 1 })
+      ? (opts.health ?? JSON.stringify({ ok: true, version: "0.3.0", protocol: 1 }))
       : e.url.endsWith("/api/v1/status")
         ? JSON.stringify({
             version: "0.3.0",
@@ -72,7 +75,7 @@ function world(on: On, opts: { conn?: string | null; up?: boolean; queue?: strin
   on("session.end", (_, e) => ({ sessionId: e.sessionId }));
   on("command.run", () => ({ text: "engine" }));
   const posts = (path: string) => sent.filter((s) => s.url === `${URL_}${path}`);
-  return { sent, posts, toasts, store, server, clock, registered };
+  return { sent, posts, toasts, store, server, file, clock, registered };
 }
 
 const start = ($: Engine) =>
@@ -173,6 +176,30 @@ test("status command reports the server", async ($, on) => {
   expect(r.text).toContain("0.3.0");
   expect(r.text).toContain("claude-x");
   expect(r.text).toContain(URL_);
+});
+
+test("status command survives a non-JSON health body", async ($, on) => {
+  const w = world(on, { health: "<html>" });
+  await start($);
+  await w.clock.settle();
+  const r = await $.command.run({ command: "token-dashboard", args: "status" } as never);
+  expect(r.text).toContain("unexpected response");
+});
+
+test("connection re-read after a failed send", async ($, on) => {
+  const w = world(on, { up: false });
+  await start($);
+  await w.clock.advance(10_000);
+  await $.turn.complete(turnEnd);
+  await w.clock.settle();
+  const other = "http://127.0.0.1:2";
+  w.file.conn = JSON.stringify({ url: other, protocol: 1 });
+  w.server.up = true;
+  await $.turn.complete(turnEnd);
+  await w.clock.settle();
+  expect(w.sent.filter((s) => s.url === `${other}/api/v1/ingest/trigger`).length).toBeGreaterThan(
+    0,
+  );
 });
 
 test("status command prints unreachable hint", async ($, on) => {

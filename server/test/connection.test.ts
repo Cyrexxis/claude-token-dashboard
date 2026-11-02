@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PROTOCOL } from "@td/shared";
 import { loadConfig, setConfigKey } from "../src/config";
 import { writeConnectionFile } from "../src/connection";
 
@@ -91,4 +92,26 @@ test("connectionFiles must name server.json files", () => {
   expect(() => loadConfig({ HOME: d, TD_CONFIG: cfg })).toThrow(
     '"connectionFiles" must be an array of absolute paths to server.json files',
   );
+});
+
+test("the mod sends the protocol version the server speaks", () => {
+  // Read as text: the plugin imports claude-code types the root tsconfig can't resolve.
+  const src = readFileSync(join(import.meta.dir, "../../plugin/hooks/client.ts"), "utf8");
+  expect(Number(src.match(/const PROTOCOL = "(\d+)"/)?.[1])).toBe(PROTOCOL);
+});
+
+test("config.json must hold an object", () => {
+  for (const body of ["null", "[]", '"x"']) {
+    const d = tmp();
+    const cfg = join(d, "config.json");
+    writeFileSync(cfg, body);
+    expect(() => loadConfig({ HOME: d, TD_CONFIG: cfg })).toThrow("must be a JSON object");
+  }
+});
+
+test("setConfigKey replaces a config.json holding null", () => {
+  const p = join(tmp(), "config.json");
+  writeFileSync(p, "null");
+  setConfigKey(p, "connectionFiles", ["/x"]);
+  expect(read(p)).toEqual({ connectionFiles: ["/x"] });
 });

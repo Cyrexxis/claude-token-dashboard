@@ -20,8 +20,15 @@ export function openDatabase(path: string): Database {
   db.transaction(() => {
     const current =
       db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
-    for (const sql of MIGRATIONS.slice(current)) db.run(sql);
-    db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    // An older checkout must not lower the marker: the newer build would then re-run its migrations.
+    if (current > SCHEMA_VERSION)
+      throw new Error(
+        `database schema ${current} is from a newer version (this build knows ${SCHEMA_VERSION}); run "bun run update"`,
+      );
+    if (current < SCHEMA_VERSION) {
+      for (const sql of MIGRATIONS.slice(current)) db.run(sql);
+      db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    }
     db.run(
       "INSERT INTO installations (created_at, server_version, schema_version) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM installations)",
       [Date.now(), SERVER_VERSION, SCHEMA_VERSION],

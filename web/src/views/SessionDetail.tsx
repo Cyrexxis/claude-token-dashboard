@@ -64,15 +64,9 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
         <h2 style={{ margin: 0, flex: 1 }}>
           {metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session
         </h2>
-        <div className="tabs" role="tablist">
+        <div className="tabs">
           {(["tokens", "cost"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={m === metric}
-              onClick={() => setMetric(m)}
-            >
+            <button key={m} type="button" aria-pressed={m === metric} onClick={() => setMetric(m)}>
               {m === "tokens" ? "Tokens" : "Cost"}
             </button>
           ))}
@@ -161,7 +155,7 @@ export function SessionDetail({ id }: { id: string }) {
         <StatTile
           label="Requests"
           value={s.requests.toLocaleString()}
-          sub={`${agents.length} subagents`}
+          sub={`${agents.length} ${agents.length === 1 ? "subagent" : "subagents"}`}
         />
         <StatTile
           label="Tokens"

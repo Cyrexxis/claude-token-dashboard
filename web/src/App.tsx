@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Status as StatusData } from "@td/shared";
 import { type ReactNode, useState } from "react";
-import { api, HttpError, useLiveEvents } from "./api";
+import { api, NetworkError, useLiveEvents } from "./api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { presetRange, type Range, type RangePreset } from "./format";
 import { useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
@@ -32,8 +33,8 @@ export function App() {
   const range = presetRange(preset);
   const status = useQuery({ queryKey: ["status"], queryFn: () => api<StatusData>("/status") });
 
-  // A network error (not an HTTP error) means the server is not running.
-  if (status.error && !(status.error instanceof HttpError))
+  // No response at all means the server is not running; a bad response is shown by the views.
+  if (status.error instanceof NetworkError)
     return (
       <main className="page center">
         <h1>Server not reachable</h1>
@@ -81,7 +82,9 @@ export function App() {
           <a href="#/status">Status</a> page
         </div>
       )}
-      <main>{views[route.view]}</main>
+      <main>
+        <ErrorBoundary key={route.view}>{views[route.view]}</ErrorBoundary>
+      </main>
     </div>
   );
 }

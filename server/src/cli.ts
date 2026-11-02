@@ -150,11 +150,13 @@ async function main(cmd: string | undefined) {
         .catch((e) => console.error(`ingest failed: ${(e as Error).message}`)),
   });
   console.log(`watching ${roots.length} root(s); Ctrl+C to stop`);
-  process.on("SIGINT", () => {
+  const stop = () => {
     watcher.stop();
     db.close();
     process.exit(0);
-  });
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop); // systemd stops services with SIGTERM
 }
 
 await main(process.argv[2]);

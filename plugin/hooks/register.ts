@@ -14,7 +14,8 @@ const COMMAND = "token-dashboard";
 const START_RETRIES = 5;
 const END_WAIT_MS = 1_500;
 
-// Module state lives per load; a reload starts it over, which only re-reads the file.
+// Module state lives per load. The connection is dropped after a failed send, so a port
+// changed by setup is picked up on the next call.
 let conn: Connection | null = null;
 let toasted = false;
 // Queue writes run one at a time so a flush and an enqueue never overwrite each other.
@@ -40,9 +41,12 @@ const healthy = async ($: $, c: Connection) => (await send($, c, "/api/health"))
 async function connect($: $): Promise<void> {
   const c = await connection($);
   if (!c) return;
-  if (!(await healthy($, c)) && c.start?.length) {
-    await $.process.run(c.start).catch(() => {});
-    for (let i = 0; i < START_RETRIES && !(await healthy($, c)); i++) await $.clock.sleep(1_000);
+  if (!(await healthy($, c))) {
+    conn = null;
+    if (c.start?.length) {
+      await $.process.run(c.start).catch(() => {});
+      for (let i = 0; i < START_RETRIES && !(await healthy($, c)); i++) await $.clock.sleep(1_000);
+    }
   }
   await flush($, c);
 }
@@ -59,6 +63,7 @@ function flush($: $, c: Connection): Promise<void> {
 async function trigger($: $, sessionId: string): Promise<void> {
   const c = await connection($);
   const ok = c && (await send($, c, "/api/v1/ingest/trigger", { sessionId })) !== null;
+  if (!ok) conn = null;
   if (!ok) return serial(async () => writeQueue($, enqueue(await readQueue($), sessionId)));
   if ((await readQueue($)).length && c) await flush($, c);
 }
@@ -66,6 +71,16 @@ async function trigger($: $, sessionId: string): Promise<void> {
 /** Network work runs on a timer, outside the hook's dispatch: Claude never waits on it. */
 const later = ($: $, fn: () => Promise<unknown>) =>
   void $.clock.after(0, () => void fn().catch(() => {}));
+
+/** A reply body as an object; null when missing or not JSON (a proxy, another service on the port). */
+function parse(text: string | null): Record<string, unknown> | null {
+  try {
+    const v: unknown = JSON.parse(text ?? "");
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
 
 async function statusText($: $): Promise<string> {
   const path = await connectionPath($);
@@ -80,15 +95,20 @@ async function statusText($: $): Promise<string> {
       `Server ${c.url} not reachable (start it with: bun run serve)`,
       `Queued ingest triggers: ${queued}`,
     ].join("\n");
-  const h = JSON.parse(health) as { version?: string; protocol?: number };
+  const h = parse(health) as { version?: string; protocol?: number } | null;
+  if (!h)
+    return [
+      ...lines,
+      `Server ${c.url}: unexpected response (not a token-dashboard server?)`,
+      `Queued ingest triggers: ${queued}`,
+    ].join("\n");
   lines.push(`Server ${c.url}: version ${h.version}, protocol ${h.protocol}`);
-  const raw = await send($, c, "/api/v1/status");
-  if (raw) {
-    const s = JSON.parse(raw) as {
-      requests?: number;
-      unpricedModels?: string[];
-      ingest?: { lastRunAt: number | null; lastErrors: number };
-    };
+  const s = parse(await send($, c, "/api/v1/status")) as {
+    requests?: number;
+    unpricedModels?: string[];
+    ingest?: { lastRunAt: number | null; lastErrors: number };
+  } | null;
+  if (s) {
     const last = s.ingest?.lastRunAt ? new Date(s.ingest.lastRunAt).toLocaleString() : "never";
     lines.push(
       `Requests stored: ${s.requests ?? 0}`,

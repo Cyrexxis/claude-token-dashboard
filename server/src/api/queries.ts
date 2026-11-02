@@ -158,7 +158,7 @@ function labels(db: Database, group: Exclude<Group, "type">, keys: string[]): Ma
   if (group === "agent") {
     const rows = db
       .query<{ id: string; name: string }, []>(
-        "SELECT agent_id id, COALESCE(description, agent_type) name FROM agents WHERE name IS NOT NULL",
+        "SELECT agent_id id, COALESCE(description, agent_type) name FROM agents WHERE COALESCE(description, agent_type) IS NOT NULL",
       )
       .all();
     for (const a of rows) if (m.has(a.id)) m.set(a.id, a.name);

@@ -52,6 +52,9 @@ export function loadConfig(env: Env = process.env): Config {
   };
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
 function readConfigFile(
   path: string,
 ): Partial<
@@ -67,7 +70,8 @@ function readConfigFile(
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw new Error(`${path}: ${(e as Error).message}`);
   }
-  const c = (raw ?? {}) as Record<string, unknown>;
+  if (!isObject(raw)) throw new Error(`${path}: must be a JSON object`);
+  const c = raw;
   const bad = (k: string, want: string) => new Error(`${path}: "${k}" must be ${want}`);
   if (
     c.extraRoots !== undefined &&
@@ -104,7 +108,8 @@ function readConfigFile(
 export function setConfigKey(path: string, key: string, value: unknown): void {
   let c: Record<string, unknown> = {};
   try {
-    c = JSON.parse(readFileSync(path, "utf8"));
+    const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (isObject(raw)) c = raw;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }

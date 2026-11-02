@@ -203,7 +203,7 @@ button.primary {
   background: none;
   color: var(--muted);
 }
-.tabs button[aria-selected="true"] {
+.tabs button[aria-pressed="true"] {
   color: var(--text);
   background: var(--surface);
   border-color: var(--border);

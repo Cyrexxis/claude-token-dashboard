@@ -80,15 +80,9 @@ const KINDS: Kind[] = ["five_hour", "seven_day"];
 
 function WindowTabs({ kind, onChange }: { kind: Kind; onChange: (k: Kind) => void }) {
   return (
-    <div className="tabs" role="tablist">
+    <div className="tabs">
       {KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          role="tab"
-          aria-selected={k === kind}
-          onClick={() => onChange(k)}
-        >
+        <button key={k} type="button" aria-pressed={k === kind} onClick={() => onChange(k)}>
           {kindLabel(k)}
         </button>
       ))}
@@ -263,15 +257,9 @@ function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: Plan
           {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the{" "}
           {picked ? "selected" : "current"} window
         </h2>
-        <div className="tabs" role="tablist">
+        <div className="tabs">
           {(["tokens", "cost"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={m === metric}
-              onClick={() => setMetric(m)}
-            >
+            <button key={m} type="button" aria-pressed={m === metric} onClick={() => setMetric(m)}>
               {m === "tokens" ? "Tokens" : "Cost"}
             </button>
           ))}
@@ -416,10 +404,16 @@ export function Plan({ range }: ViewProps) {
                       key={`${w.kind}-${w.resetsAt}`}
                       className={cls.filter(Boolean).join(" ")}
                       title={w.lowSignal ? "Under 5 %: per-1 % figures are noisy" : undefined}
-                      onClick={pick}
+                      // Mouse convenience; the button is the real (keyboard) target and handles its own clicks.
+                      onClick={(e) => (e.target as Element).closest("button") || pick()}
                     >
                       <td>
-                        <button type="button" className="row-pick" aria-pressed={isPicked}>
+                        <button
+                          type="button"
+                          className="row-pick"
+                          aria-pressed={isPicked}
+                          onClick={pick}
+                        >
                           {when(w.startMs ?? 0)} → {when(w.resetsAt)}
                         </button>
                         {w.current && <span className="muted"> (current)</span>}

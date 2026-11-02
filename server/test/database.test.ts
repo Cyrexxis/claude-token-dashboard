@@ -89,3 +89,17 @@ test("sessions carry the title and agent metadata columns", () => {
     ]),
   );
 });
+
+test("a database from a newer schema is refused and left alone", () => {
+  const path = join(tmp(), "a.db");
+  openDatabase(path).close();
+  const raw = new Database(path);
+  raw.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+  raw.close();
+  expect(() => openDatabase(path)).toThrow(/newer version/);
+  const after = new Database(path);
+  expect(after.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version).toBe(
+    SCHEMA_VERSION + 1,
+  );
+  after.close();
+});

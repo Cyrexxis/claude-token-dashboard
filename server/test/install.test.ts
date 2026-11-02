@@ -234,3 +234,12 @@ test("setup announces the long steps before running them", () => {
   const restart = seen.indexOf("run:systemctl --user daemon-reload");
   expect(seen[restart - 1]).toBe("log:installing and starting the token-dashboard service…");
 });
+
+test("unitFile escapes systemd specifiers, quotes and backslashes", () => {
+  const unit = unitFile({
+    bunPath: "/b/bun",
+    repoDir: "/r",
+    env: { TD_CONFIG: '/a/50%/"q"\\x', HOME: "/h" },
+  });
+  expect(unit).toContain('Environment="TD_CONFIG=/a/50%%/\\"q\\"\\\\x"\n');
+});

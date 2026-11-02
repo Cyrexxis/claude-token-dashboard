@@ -8,7 +8,16 @@ export function parseHash(hash: string): Route {
   const [view, ...rest] = hash.replace(/^#\/?/, "").split("/");
   if (!VIEWS.includes(view as View)) return { view: "overview" };
   const id = rest.join("/");
-  return id ? { view: view as View, id: decodeURIComponent(id) } : { view: view as View };
+  return id ? { view: view as View, id: decode(id) } : { view: view as View };
+}
+
+/** A hand-edited hash can hold a broken escape; keep it raw rather than throw during render. */
+function decode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 export function useRoute(): Route {

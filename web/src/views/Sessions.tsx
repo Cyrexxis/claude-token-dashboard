@@ -12,13 +12,15 @@ const PAGE = 50;
 export function Sessions({ range, id }: ViewProps & { id?: string }) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(0);
   useEffect(() => {
     const t = setTimeout(() => setQ(text.trim()), 300);
     return () => clearTimeout(t);
   }, [text]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: back to page 1 whenever the filter changes
-  useEffect(() => setPage(0), [q, range.from, range.to]);
+  // The page belongs to one filter: a new filter reads page 0 in the same render, so no stale-offset request.
+  const filterKey = `${q}|${range.from}|${range.to}`;
+  const [paged, setPaged] = useState({ key: filterKey, page: 0 });
+  const page = paged.key === filterKey ? paged.page : 0;
+  const setPage = (p: number) => setPaged({ key: filterKey, page: p });
 
   const params = { ...range, q: q || undefined, limit: PAGE, offset: page * PAGE };
   const list = useQuery({

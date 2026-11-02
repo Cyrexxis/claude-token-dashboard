@@ -264,13 +264,13 @@ test("malformed lines are counted and the rest is ingested", async () => {
   expect(f.last_error).toContain("invalid JSON");
 });
 
-test("deleted file is skipped and counted", async () => {
+test("deleted file is skipped, not an error", async () => {
   const { db, file, ingest, rootPath } = setup();
   const r = await ingest(
     join(rootPath, "projects", "-home-u-proj", "gone.jsonl"),
     file("s1.jsonl", [assistant()]),
   );
-  expect(r.errors).toBe(1);
+  expect(r.errors).toBe(0);
   expect(r.newRequests).toBe(1);
   expect(count(db)).toBe(1);
 });

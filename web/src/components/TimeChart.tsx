@@ -38,7 +38,7 @@ type Props = {
 type TipProps = {
   active?: boolean;
   label?: string;
-  payload?: { name: string; value: number; color: string }[];
+  payload?: { name: string; dataKey: string; value: number; color: string }[];
   format: (n: number) => string;
   fmtLabel: (bucket: string) => string;
 };
@@ -49,7 +49,7 @@ function Tip({ active, label, payload, format, fmtLabel }: TipProps) {
     <div className="chart-tip">
       <div className="tip-head">{label && fmtLabel(label)}</div>
       {[...payload].reverse().map((p) => (
-        <div key={p.name} className="tip-row">
+        <div key={p.dataKey} className="tip-row">
           <span className="swatch" style={{ background: p.color }} />
           <span>{p.name}</span>
           <span className="num">{format(p.value)}</span>
