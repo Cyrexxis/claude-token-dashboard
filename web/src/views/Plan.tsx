@@ -1,9 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import {
-  GROUP_LABEL,
   type Group,
   isTimedPlanKind,
-  type PlanSnapshotPoint,
   type PlanSnapshots,
   type PlanWindow,
   type PlanWindows,
@@ -24,14 +22,23 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ViewProps } from "../App";
 import { api } from "../api";
+import { axisProps, seriesColor, tooltipStyle } from "../chart-theme";
 import { SessionTable } from "../components/SessionTable";
-import { seriesColor, TimeChart } from "../components/TimeChart";
+import { TimeChart } from "../components/TimeChart";
+import { GroupSelect, MetricToggle } from "../components/Toggle";
 import { fmtDuration, fmtTokens, fmtUsd, localDay } from "../format";
+import {
+  findWindow,
+  mergeReadings,
+  overlappingWeekly,
+  type WindowId,
+  windowTicks,
+} from "../plan-math";
+import type { ViewProps } from "../types";
 
 const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "Weekly" };
-export const kindLabel = (kind: string) => KIND_LABEL[kind] ?? kind;
+const kindLabel = (kind: string) => KIND_LABEL[kind] ?? kind;
 const pct = (n: number) => `${n.toFixed(1).replace(/\.0$/, "")} %`;
 const when = (ms: number) =>
   new Date(ms).toLocaleString(undefined, {
@@ -44,7 +51,7 @@ const CHAT_NOTE =
   "Plan % also counts claude.ai chat and Cowork, so this reads low on days you also chat.";
 
 /** Re-renders every 30 s so reset countdowns stay current. */
-export function useNow(): number {
+function useNow(): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -53,14 +60,15 @@ export function useNow(): number {
   return now;
 }
 
-export function usePlanWindows(range: ViewProps["range"]) {
+function usePlanWindows(range: ViewProps["range"]) {
   return useQuery({
     queryKey: ["plan", "windows", range],
-    queryFn: () => api<PlanWindows>("/plan/windows", range),
+    queryFn: ({ signal }) => api<PlanWindows>("/plan/windows", range, { signal }),
   });
 }
 
-function WindowCard({ w, now }: { w: PlanWindow; now: number }) {
+function WindowCard({ w }: { w: PlanWindow }) {
+  const now = useNow();
   return (
     <div className="tile">
       <div className="label">{kindLabel(w.kind)} window</div>
@@ -99,52 +107,18 @@ function useWindowPoints(w: PlanWindow) {
   const range = { from: localDay(new Date(w.startMs ?? 0)), to: localDay(new Date(w.resetsAt)) };
   return useQuery({
     queryKey: ["plan", "snapshots", range],
-    queryFn: () => api<PlanSnapshots>("/plan/snapshots", range),
+    queryFn: ({ signal }) => api<PlanSnapshots>("/plan/snapshots", range, { signal }),
   });
 }
 
-/**
- * One row per reading time from `start` on, each kind holding its latest value so far in its
- * current window. Readings are stored only when a value changes, so carrying it forward is exact.
- * Rows end at the last reading of any kind, so a mod that stopped reporting shows as a gap.
- */
-export function mergeReadings(
-  points: PlanSnapshotPoint[],
-  current: Pick<PlanWindow, "kind" | "resetsAt">[],
-  start: number,
-): Record<string, number>[] {
-  const resets = new Map(current.map((w) => [w.kind, w.resetsAt]));
-  const own = points.filter((p) => resets.get(p.kind) === p.resetsAt).sort((a, b) => a.ts - b.ts);
-  const times = [...new Set([start, ...own.filter((p) => p.ts > start).map((p) => p.ts)])];
-  const last: Record<string, number> = {};
-  let i = 0;
-  return times.map((ts) => {
-    for (let p = own[i]; p && p.ts <= ts; p = own[++i]) last[p.kind] = p.percentUsed;
-    return { ...last, ts };
-  });
-}
-
-/** Whole hours for the 5-hour window, local midnights for the weekly one. */
-export function windowTicks(kind: string, start: number, end: number): number[] {
-  const t = new Date(start);
-  if (kind === "five_hour") t.setMinutes(0, 0, 0);
-  else t.setHours(0, 0, 0, 0);
-  const out: number[] = [];
-  for (
-    ;
-    t.getTime() <= end;
-    kind === "five_hour" ? t.setHours(t.getHours() + 1) : t.setDate(t.getDate() + 1)
-  )
-    if (t.getTime() >= start) out.push(t.getTime());
-  return out;
-}
 const hourTick = (ms: number) =>
   new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 const dayTick = (ms: number) =>
   new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
 /** The 5-hour view also shows the weekly line; the weekly view shows only itself. */
-function Timeline({ w, current, now }: { w: PlanWindow; current: PlanWindow[]; now: number }) {
+function Timeline({ w, current }: { w: PlanWindow; current: PlanWindow[] }) {
+  const now = useNow();
   // The weekly window's range also holds the weekly reading that carries into a 5-hour window.
   const points = useWindowPoints(current.find((c) => c.kind === "seven_day") ?? w);
   if (points.error) return <p className="error">{points.error.message}</p>;
@@ -152,11 +126,7 @@ function Timeline({ w, current, now }: { w: PlanWindow; current: PlanWindow[]; n
   const start = w.startMs ?? 0;
   const rows = mergeReadings(points.data.points, current, start);
   const shown = w.kind === "five_hour" ? KINDS : [w.kind];
-  const axis = {
-    stroke: "var(--axis)",
-    tick: { fill: "var(--muted)", fontSize: 12 },
-    tickLine: false,
-  };
+  const axis = axisProps;
   return (
     <ResponsiveContainer width="100%" height={280}>
       <LineChart data={rows}>
@@ -174,7 +144,7 @@ function Timeline({ w, current, now }: { w: PlanWindow; current: PlanWindow[]; n
         <Tooltip
           labelFormatter={(v) => when(Number(v))}
           formatter={(v) => pct(Number(v))}
-          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          contentStyle={tooltipStyle}
         />
         <Legend />
         <ReferenceLine
@@ -204,7 +174,7 @@ function WindowSessions({ w }: { w: PlanWindow }) {
   const params = { fromMs: w.startMs ?? 0, toMs: w.resetsAt };
   const list = useQuery({
     queryKey: ["plan", "sessions", params],
-    queryFn: () => api<SessionList>("/plan/sessions", params),
+    queryFn: ({ signal }) => api<SessionList>("/plan/sessions", params, { signal }),
   });
   if (list.error) return <p className="error">{list.error.message}</p>;
   if (!list.data) return <p className="muted">Loading…</p>;
@@ -246,33 +216,19 @@ function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: Plan
   };
   const q = useQuery({
     queryKey: ["plan", "timeseries", params],
-    queryFn: () => api<Timeseries>("/plan/timeseries", params),
-    enabled: !!params,
+    queryFn: params
+      ? ({ signal }) => api<Timeseries>("/plan/timeseries", params, { signal })
+      : skipToken,
   });
   return (
     <section className="card">
       <div className="toolbar">
-        <h2 style={{ margin: 0, flex: 1 }}>
+        <h2 className="card-title">
           {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the{" "}
           {picked ? "selected" : "current"} window
         </h2>
-        <div className="tabs">
-          {(["tokens", "cost"] as const).map((m) => (
-            <button key={m} type="button" aria-pressed={m === metric} onClick={() => setMetric(m)}>
-              {m === "tokens" ? "Tokens" : "Cost"}
-            </button>
-          ))}
-        </div>
-        <label>
-          Group by{" "}
-          <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
-            {GROUPS.map((g) => (
-              <option key={g} value={g}>
-                {GROUP_LABEL[g]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MetricToggle value={metric} onChange={setMetric} />
+        <GroupSelect value={group} groups={GROUPS} onChange={setGroup} />
         {!picked && <WindowTabs kind={kind} onChange={setKind} />}
       </div>
       {!w && <p className="muted empty">No current {kindLabel(kind)} window.</p>}
@@ -295,28 +251,19 @@ function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: Plan
   );
 }
 
-/** Weekly windows overlapping `w` (a 5-hour window); none for a weekly window. */
-export function overlappingWeekly(w: PlanWindow, all: PlanWindow[]): PlanWindow[] {
-  if (w.kind !== "five_hour" || w.startMs === null) return [];
-  const start = w.startMs;
-  return all.filter(
-    (x) =>
-      x.kind === "seven_day" && x.startMs !== null && x.startMs < w.resetsAt && start < x.resetsAt,
-  );
-}
-
 const perPct = (v: number | null, f: (n: number) => string) => (v === null ? "—" : f(v));
 
 export function Plan({ range }: ViewProps) {
-  const now = useNow();
   const windows = usePlanWindows(range);
   const [chartKind, setChartKind] = useState<Kind>("five_hour");
   const [tableKind, setTableKind] = useState<Kind>("five_hour");
   const [listKind, setListKind] = useState<Kind>("five_hour");
-  const [picked, setPicked] = useState<PlanWindow | null>(null);
+  // The pick is an identity: the shown window always comes from the latest fetch.
+  const [pickedId, setPickedId] = useState<WindowId | null>(null);
   if (windows.error) return <p className="error">{windows.error.message}</p>;
   if (!windows.data) return <p className="muted">Loading…</p>;
   const { current, past } = windows.data;
+  const picked = findWindow(past, pickedId);
   if (!current.length && !past.length)
     return (
       <p className="muted empty">
@@ -338,7 +285,7 @@ export function Plan({ range }: ViewProps) {
       {current.length > 0 && (
         <div className="tiles">
           {current.map((w) => (
-            <WindowCard key={`${w.kind}-${w.resetsAt}`} w={w} now={now} />
+            <WindowCard key={`${w.kind}-${w.resetsAt}`} w={w} />
           ))}
         </div>
       )}
@@ -348,33 +295,29 @@ export function Plan({ range }: ViewProps) {
             Charts and sessions show the past {kindLabel(picked.kind)} window{" "}
             {when(picked.startMs ?? 0)} → {when(picked.resetsAt)}.
           </span>
-          <button type="button" className="primary" onClick={() => setPicked(null)}>
+          <button type="button" className="primary" onClick={() => setPickedId(null)}>
             Back to current window
           </button>
         </div>
       )}
       <section className="card">
         <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>
-            Plan usage in the {picked ? "selected" : "current"} window
-          </h2>
+          <h2 className="card-title">Plan usage in the {picked ? "selected" : "current"} window</h2>
           {!picked && <WindowTabs kind={chartKind} onChange={setChartKind} />}
         </div>
-        {chartWin ? <Timeline w={chartWin} current={chartCurrent} now={now} /> : none(chartKind)}
+        {chartWin ? <Timeline w={chartWin} current={chartCurrent} /> : none(chartKind)}
       </section>
       <WindowSeries current={current} picked={picked} />
       <section className="card">
         <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>
-            Sessions in the {picked ? "selected" : "current"} window
-          </h2>
+          <h2 className="card-title">Sessions in the {picked ? "selected" : "current"} window</h2>
           {!picked && <WindowTabs kind={tableKind} onChange={setTableKind} />}
         </div>
         {tableWin ? <WindowSessions w={tableWin} /> : none(tableKind)}
       </section>
       <section className="card">
         <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>Windows</h2>
+          <h2 className="card-title">Windows</h2>
           <WindowTabs kind={listKind} onChange={setListKind} />
         </div>
         {listed.length ? (
@@ -396,7 +339,8 @@ export function Plan({ range }: ViewProps) {
                   const isPicked = w.current
                     ? picked === null
                     : picked?.kind === w.kind && picked.resetsAt === w.resetsAt;
-                  const pick = () => setPicked(w.current ? null : w);
+                  const pick = () =>
+                    setPickedId(w.current ? null : { kind: w.kind, resetsAt: w.resetsAt });
                   const cls = ["link", w.lowSignal && "faded", isPicked && "selected"];
                   return (
                     <tr

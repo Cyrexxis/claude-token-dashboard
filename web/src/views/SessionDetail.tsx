@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { type SessionDetail as Detail, GROUP_LABEL, type Group, type Timeseries } from "@td/shared";
+import { type SessionDetail as Detail, type Group, type Timeseries, totalTokens } from "@td/shared";
 import { useState } from "react";
 import {
   Area,
@@ -12,21 +12,13 @@ import {
   YAxis,
 } from "recharts";
 import { api, HttpError } from "../api";
+import { axisProps, SERIES_VARS, tooltipStyle } from "../chart-theme";
 import { StatTile } from "../components/StatTile";
-import { SERIES_VARS, TimeChart } from "../components/TimeChart";
+import { TimeChart } from "../components/TimeChart";
+import { GroupSelect, MetricToggle } from "../components/Toggle";
 import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
+import { pickStep, slotStart, stepLabel } from "../session-math";
 
-const M = 60_000;
-const DAY = 24 * 60 * M;
-const STEPS = [M, 5 * M, 15 * M, 60 * M, 3 * 60 * M, DAY];
-const STEP_LABEL = ["1-minute", "5-minute", "15-minute", "1-hour", "3-hour", "1-day"];
-/** Smallest slot that keeps a session of this length to at most 60 bars. */
-export const pickStep = (durationMs: number) => STEPS.find((s) => durationMs / s < 60) ?? DAY;
-/** Start of the local-time slot holding `ts`, so hour and day slots begin on the clock. */
-export function slotStart(ts: number, step: number): number {
-  const local = -new Date(ts).getTimezoneOffset() * M;
-  return ts - ((ts + local) % step);
-}
 const hhmm = (b: string) =>
   new Date(Number(b)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 const dayHour = (b: string) =>
@@ -53,7 +45,7 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
   };
   const q = useQuery({
     queryKey: ["session", s.id, "timeseries", params],
-    queryFn: () => api<Timeseries>("/plan/timeseries", params),
+    queryFn: ({ signal }) => api<Timeseries>("/plan/timeseries", params, { signal }),
     // Keep the chart while a live session grows, but never show another session's data.
     placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === s.id ? prev : undefined),
   });
@@ -61,26 +53,11 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
   return (
     <section className="card">
       <div className="toolbar">
-        <h2 style={{ margin: 0, flex: 1 }}>
+        <h2 className="card-title">
           {metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session
         </h2>
-        <div className="tabs">
-          {(["tokens", "cost"] as const).map((m) => (
-            <button key={m} type="button" aria-pressed={m === metric} onClick={() => setMetric(m)}>
-              {m === "tokens" ? "Tokens" : "Cost"}
-            </button>
-          ))}
-        </div>
-        <label>
-          Group by{" "}
-          <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
-            {(["type", "agent"] as const).map((g) => (
-              <option key={g} value={g}>
-                {GROUP_LABEL[g]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MetricToggle value={metric} onChange={setMetric} />
+        <GroupSelect value={group} groups={["type", "agent"] as const} onChange={setGroup} />
       </div>
       {q.error && <p className="error">{q.error.message}</p>}
       {!q.data && !q.error && <p className="muted">Loading…</p>}
@@ -97,7 +74,7 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
           defaultHidden={metric === "tokens" && group === "type" ? ["cacheRead"] : []}
         />
       )}
-      <p className="muted note">Includes sub-agents; {STEP_LABEL[STEPS.indexOf(stepMs)]} slots.</p>
+      <p className="muted note">Includes sub-agents; {stepLabel(stepMs)} slots.</p>
     </section>
   );
 }
@@ -110,7 +87,8 @@ const CACHE_SERIES = [
 export function SessionDetail({ id }: { id: string }) {
   const q = useQuery({
     queryKey: ["session", id],
-    queryFn: () => api<Detail>(`/sessions/${encodeURIComponent(id)}`),
+    queryFn: ({ signal }) =>
+      api<Detail>(`/sessions/${encodeURIComponent(id)}`, undefined, { signal }),
   });
   if (q.error instanceof HttpError && q.error.status === 404)
     return (
@@ -132,11 +110,7 @@ export function SessionDetail({ id }: { id: string }) {
       cacheWrite: r.cacheWrite5m + r.cacheWrite1h,
       input: r.input,
     }));
-  const axis = {
-    stroke: "var(--axis)",
-    tick: { fill: "var(--muted)", fontSize: 12 },
-    tickLine: false,
-  };
+  const axis = axisProps;
 
   return (
     <>
@@ -162,7 +136,7 @@ export function SessionDetail({ id }: { id: string }) {
         />
         <StatTile
           label="Tokens"
-          value={fmtTokens(t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h)}
+          value={fmtTokens(totalTokens(t))}
           sub={`${fmtTokens(t.output)} output`}
         />
         <StatTile
@@ -191,12 +165,7 @@ export function SessionDetail({ id }: { id: string }) {
               <Tooltip
                 formatter={(v) => fmtTokens(Number(v))}
                 labelFormatter={(n) => `Request ${n}`}
-                contentStyle={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
+                contentStyle={tooltipStyle}
                 itemStyle={{ color: "var(--text)" }}
               />
               <Legend

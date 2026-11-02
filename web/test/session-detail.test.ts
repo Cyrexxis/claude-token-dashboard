@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { pickStep, slotStart } from "../src/views/SessionDetail";
+import { pickStep, slotStart } from "../src/session-math";
 
 const M = 60_000;
 

@@ -1,9 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { SessionList } from "@td/shared";
 import { useEffect, useState } from "react";
-import type { ViewProps } from "../App";
 import { api } from "../api";
 import { SessionTable } from "../components/SessionTable";
+import type { ViewProps } from "../types";
 import { SessionDetail } from "./SessionDetail";
 
 const PAGE = 50;
@@ -25,13 +25,13 @@ export function Sessions({ range, id }: ViewProps & { id?: string }) {
   const params = { ...range, q: q || undefined, limit: PAGE, offset: page * PAGE };
   const list = useQuery({
     queryKey: ["sessions", params],
-    queryFn: () => api<SessionList>("/sessions", params),
+    queryFn: ({ signal }) => api<SessionList>("/sessions", params, { signal }),
     placeholderData: keepPreviousData,
   });
   // All time, not the period: the active session is shown even if the list filters it out.
   const latest = useQuery({
     queryKey: ["sessions", { limit: 1 }],
-    queryFn: () => api<SessionList>("/sessions", { limit: 1 }),
+    queryFn: ({ signal }) => api<SessionList>("/sessions", { limit: 1 }, { signal }),
   });
   const shown = id ?? latest.data?.items[0]?.id;
   const total = list.data?.total ?? 0;
@@ -57,7 +57,7 @@ export function Sessions({ range, id }: ViewProps & { id?: string }) {
       {latest.data && !shown && <p className="muted empty">No sessions yet.</p>}
       <section className="card">
         <div className="toolbar">
-          <h2 style={{ margin: 0, flex: 1 }}>Sessions</h2>
+          <h2 className="card-title">Sessions</h2>
           <input
             type="search"
             placeholder="Search title, project or id"

@@ -13,6 +13,9 @@ export type Tokens = {
   webSearch: number;
   webFetch: number;
 };
+/** Every token the model read or wrote (thinking is already inside output). */
+export const totalTokens = (t: Tokens): number =>
+  t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h;
 
 export type Summary = {
   from: string | null;

@@ -1,40 +1,9 @@
-import type { SessionRow, Tokens } from "@td/shared";
+import { type SessionRow, totalTokens } from "@td/shared";
 import { useState } from "react";
 import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
+import { COLS, type ColId, duration, sortSessions } from "../session-sort";
 
 const when = (ms: number | null) => (ms === null ? "—" : new Date(ms).toLocaleString());
-const total = (t: Tokens) => t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h;
-const duration = (s: SessionRow) =>
-  s.firstTs !== null && s.lastTs !== null ? s.lastTs - s.firstTs : null;
-
-type Col = {
-  label: string;
-  num?: boolean;
-  text?: boolean;
-  key: (s: SessionRow) => string | number;
-};
-const COLS: Col[] = [
-  { label: "Title", text: true, key: (s) => s.title ?? s.id },
-  { label: "Project", text: true, key: (s) => projectLabel(s.project, s.cwd) },
-  { label: "Source", text: true, key: (s) => sourceLabel(s.sourceKind, s.entrypoint) },
-  { label: "Model", text: true, key: (s) => s.model ?? "" },
-  { label: "Last active", key: (s) => s.lastTs ?? 0 },
-  { label: "Duration", num: true, key: (s) => duration(s) ?? -1 },
-  { label: "Tokens", num: true, key: (s) => total(s.tokens) },
-  { label: "Cost", num: true, key: (s) => s.costUsd },
-];
-const LAST_ACTIVE = 4;
-
-export function sortSessions(items: SessionRow[], col: number, desc: boolean): SessionRow[] {
-  const key = COLS[col]?.key;
-  if (!key) return items;
-  return [...items].sort((a, b) => {
-    const x = key(a);
-    const y = key(b);
-    const c = typeof x === "string" ? x.localeCompare(String(y)) : x - Number(y);
-    return desc ? -c : c;
-  });
-}
 
 /** `sortable` sorts client-side, so only use it when `items` is the whole list (not one page). */
 export function SessionTable({
@@ -46,28 +15,37 @@ export function SessionTable({
   sortable?: boolean;
   selected?: string;
 }) {
-  const [sort, setSort] = useState({ col: LAST_ACTIVE, desc: true });
+  const [sort, setSort] = useState<{ col: ColId; desc: boolean }>({
+    col: "lastActive",
+    desc: true,
+  });
   const rows = sortable ? sortSessions(items, sort.col, sort.desc) : items;
   // Text columns start A→Z, numbers and dates start largest/newest first.
-  const pick = (col: number) =>
-    setSort(col === sort.col ? { col, desc: !sort.desc } : { col, desc: !COLS[col]?.text });
+  const pick = (c: (typeof COLS)[number]) =>
+    setSort(
+      c.id === sort.col ? { col: c.id, desc: !sort.desc } : { col: c.id, desc: c.align !== "text" },
+    );
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
-            {COLS.map((c, i) => (
+            {COLS.map((c) => (
               <th
                 key={c.label}
-                className={c.num ? "num" : undefined}
+                className={c.align === "num" ? "num" : undefined}
                 aria-sort={
-                  sortable && i === sort.col ? (sort.desc ? "descending" : "ascending") : undefined
+                  sortable && c.id === sort.col
+                    ? sort.desc
+                      ? "descending"
+                      : "ascending"
+                    : undefined
                 }
               >
                 {sortable ? (
-                  <button type="button" className="th-sort" onClick={() => pick(i)}>
+                  <button type="button" className="th-sort" onClick={() => pick(c)}>
                     {c.label}
-                    {i === sort.col && (sort.desc ? " ▼" : " ▲")}
+                    {c.id === sort.col && (sort.desc ? " ▼" : " ▲")}
                   </button>
                 ) : (
                   c.label
@@ -99,7 +77,7 @@ export function SessionTable({
                 <td>{s.model ?? "—"}</td>
                 <td>{when(s.lastTs)}</td>
                 <td className="num">{d === null ? "—" : fmtDuration(d)}</td>
-                <td className="num">{fmtTokens(total(s.tokens))}</td>
+                <td className="num">{fmtTokens(totalTokens(s.tokens))}</td>
                 <td className="num">
                   {fmtUsd(s.costUsd)}
                   {s.unpricedRequests > 0 && (

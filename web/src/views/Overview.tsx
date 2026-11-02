@@ -1,19 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Prices, Summary } from "@td/shared";
-import type { ViewProps } from "../App";
+import { type Prices, type Summary, totalTokens } from "@td/shared";
 import { api } from "../api";
 import { SeriesView } from "../components/SeriesView";
 import { StatTile } from "../components/StatTile";
 import { fmtTokens, fmtUsd, rangeDays } from "../format";
+import type { ViewProps } from "../types";
 
 const DAYS_PER_MONTH = 30.4375;
 
 export function Overview({ range }: ViewProps) {
   const summary = useQuery({
     queryKey: ["summary", range],
-    queryFn: () => api<Summary>("/summary", range),
+    queryFn: ({ signal }) => api<Summary>("/summary", range, { signal }),
   });
-  const prices = useQuery({ queryKey: ["prices"], queryFn: () => api<Prices>("/prices") });
+  const prices = useQuery({
+    queryKey: ["prices"],
+    queryFn: ({ signal }) => api<Prices>("/prices", undefined, { signal }),
+  });
   const s = summary.data;
   if (summary.error) return <p className="error">{summary.error.message}</p>;
   if (!s) return <p className="muted">Loading…</p>;
@@ -39,7 +42,7 @@ export function Overview({ range }: ViewProps) {
       <div className="tiles">
         <StatTile
           label="Tokens"
-          value={fmtTokens(t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h)}
+          value={fmtTokens(totalTokens(t))}
           sub={`${fmtTokens(t.output)} output · ${fmtTokens(t.thinking)} thinking`}
         />
         <StatTile
@@ -77,6 +80,9 @@ export function Overview({ range }: ViewProps) {
         title="API-equivalent cost at historical prices"
         marks={priceMarks}
       />
+      {prices.error && (
+        <p className="muted note">Price changes unavailable: {prices.error.message}</p>
+      )}
     </>
   );
 }

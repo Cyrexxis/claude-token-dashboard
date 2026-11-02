@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mergeReadings, overlappingWeekly, windowTicks } from "../src/views/Plan";
+import { findWindow, mergeReadings, overlappingWeekly, windowTicks } from "../src/plan-math";
 
 const H = 3_600_000;
 const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number) => ({
@@ -52,4 +52,14 @@ test("overlappingWeekly: weekly windows that overlap a 5-hour window; none for a
   const straddle = win("seven_day", 12 * H, 180 * H);
   expect(overlappingWeekly(five, [five, inside, before, straddle])).toEqual([inside, straddle]);
   expect(overlappingWeekly(inside, [five, inside])).toEqual([]);
+});
+
+test("findWindow: looks a picked window up by identity; null when gone or unpicked", () => {
+  const win = (kind: string, resetsAt: number) =>
+    ({ kind, startMs: resetsAt - 5 * H, resetsAt }) as Parameters<typeof overlappingWeekly>[0];
+  const a = win("five_hour", 15 * H);
+  const b = win("seven_day", 15 * H);
+  expect(findWindow([a, b], { kind: "seven_day", resetsAt: 15 * H })).toBe(b);
+  expect(findWindow([a, b], { kind: "five_hour", resetsAt: 20 * H })).toBeNull();
+  expect(findWindow([a, b], null)).toBeNull();
 });

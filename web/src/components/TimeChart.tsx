@@ -13,15 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
-/** Fixed categorical order (dataviz reference palette); "other" is always neutral gray. */
-export const SERIES_VARS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`);
-export const seriesColor = (key: string, i: number) =>
-  key === "other" ? "var(--series-other)" : SERIES_VARS[i % SERIES_VARS.length];
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-export const shortDay = (day: string) =>
-  `${MONTHS[Number(day.slice(5, 7)) - 1]} ${Number(day.slice(8, 10))}`;
+import { axisProps, seriesColor, shortDay } from "../chart-theme";
 
 type Props = {
   data: Timeseries;
@@ -95,11 +87,7 @@ export function TimeChart({
   // j stays the index into data.series, so colors and dataKeys don't shift when a series is hidden.
   const shown = data.series.flatMap((s, j) => (hidden.has(s.key) ? [] : [{ s, j }]));
   const last = shown.at(-1)?.j;
-  const axis = {
-    stroke: "var(--axis)",
-    tick: { fill: "var(--muted)", fontSize: 12 },
-    tickLine: false,
-  };
+  const axis = axisProps;
   const common = (
     <>
       <CartesianGrid vertical={false} stroke="var(--grid)" />

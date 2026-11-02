@@ -4,13 +4,11 @@ import { type ReactNode, useState } from "react";
 import { api, NetworkError, useLiveEvents } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { presetRange, type Range, type RangePreset } from "./format";
-import { useRoute, type View } from "./route";
+import { type Route, useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
 import { Plan } from "./views/Plan";
 import { Sessions } from "./views/Sessions";
 import { Status } from "./views/Status";
-
-export type ViewProps = { range: Range };
 
 const NAV: [View, string][] = [
   ["overview", "Overview"],
@@ -26,12 +24,28 @@ const PRESETS: [RangePreset, string][] = [
   ["all", "All time"],
 ];
 
+function viewFor(route: Route, range: Range): ReactNode {
+  switch (route.view) {
+    case "overview":
+      return <Overview range={range} />;
+    case "plan":
+      return <Plan range={range} />;
+    case "sessions":
+      return <Sessions range={range} id={route.id} />;
+    case "status":
+      return <Status />;
+  }
+}
+
 export function App() {
   useLiveEvents();
   const route = useRoute();
   const [preset, setPreset] = useState<RangePreset>("30d");
   const range = presetRange(preset);
-  const status = useQuery({ queryKey: ["status"], queryFn: () => api<StatusData>("/status") });
+  const status = useQuery({
+    queryKey: ["status"],
+    queryFn: ({ signal }) => api<StatusData>("/status", undefined, { signal }),
+  });
 
   // No response at all means the server is not running; a bad response is shown by the views.
   if (status.error instanceof NetworkError)
@@ -42,12 +56,6 @@ export function App() {
       </main>
     );
 
-  const views: Record<View, ReactNode> = {
-    overview: <Overview range={range} />,
-    plan: <Plan range={range} />,
-    sessions: <Sessions range={range} id={route.id} />,
-    status: <Status />,
-  };
   const unpriced = status.data?.unpricedModels ?? [];
 
   return (
@@ -83,7 +91,7 @@ export function App() {
         </div>
       )}
       <main>
-        <ErrorBoundary key={route.view}>{views[route.view]}</ErrorBoundary>
+        <ErrorBoundary key={route.view}>{viewFor(route, range)}</ErrorBoundary>
       </main>
     </div>
   );

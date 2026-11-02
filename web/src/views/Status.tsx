@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Prices, SourceRow, Status as StatusData } from "@td/shared";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, HttpError } from "../api";
 import { localDay } from "../format";
 
@@ -50,7 +50,10 @@ function Info({ status }: { status: StatusData }) {
 }
 
 function Sources({ status }: { status: StatusData }) {
-  const sources = useQuery({ queryKey: ["sources"], queryFn: () => api<SourceRow[]>("/sources") });
+  const sources = useQuery({
+    queryKey: ["sources"],
+    queryFn: ({ signal }) => api<SourceRow[]>("/sources", undefined, { signal }),
+  });
   const [clickedAt, setClickedAt] = useState<number | null>(null);
   // Disabled until an ingest run finishes after the click (status refreshes on ingest.status events).
   const busy =
@@ -63,6 +66,8 @@ function Sources({ status }: { status: StatusData }) {
     <section className="card">
       <h2>Sources</h2>
       {rescan.error && <p className="error">{rescan.error.message}</p>}
+      {sources.error && <p className="error">{sources.error.message}</p>}
+      {!sources.data && !sources.error && <p className="muted">Loading…</p>}
       <div className="table-wrap">
         <table>
           <thead>
@@ -112,12 +117,14 @@ function Sources({ status }: { status: StatusData }) {
 
 function PriceEditor() {
   const client = useQueryClient();
-  const prices = useQuery({ queryKey: ["prices"], queryFn: () => api<Prices>("/prices") });
+  const prices = useQuery({
+    queryKey: ["prices"],
+    queryFn: ({ signal }) => api<Prices>("/prices", undefined, { signal }),
+  });
+  // null until the first edit: show the file (or a template) without copying it into state.
   const [text, setText] = useState<string | null>(null);
   const loaded = prices.data;
-  useEffect(() => {
-    if (loaded && text === null) setText(loaded.localText ?? template());
-  }, [loaded, text]);
+  const value = text ?? loaded?.localText ?? template();
   const save = useMutation({
     mutationFn: (body: string) =>
       api<{ ok: true; repriced: number }>("/prices/local", undefined, {
@@ -144,7 +151,7 @@ function PriceEditor() {
         <textarea
           aria-label="prices.local.json"
           spellCheck={false}
-          value={text ?? ""}
+          value={value}
           onChange={(e) => setText(e.target.value)}
         />
         <div className="toolbar" style={{ marginTop: 8 }}>
@@ -152,7 +159,7 @@ function PriceEditor() {
             type="button"
             className="primary"
             disabled={save.isPending}
-            onClick={() => save.mutate(text ?? "")}
+            onClick={() => save.mutate(value)}
           >
             Save
           </button>
@@ -209,7 +216,10 @@ function PriceEditor() {
 }
 
 export function Status() {
-  const status = useQuery({ queryKey: ["status"], queryFn: () => api<StatusData>("/status") });
+  const status = useQuery({
+    queryKey: ["status"],
+    queryFn: ({ signal }) => api<StatusData>("/status", undefined, { signal }),
+  });
   if (status.error) return <p className="error">{status.error.message}</p>;
   if (!status.data) return <p className="muted">Loading…</p>;
   return (

@@ -343,3 +343,9 @@ tr.faded {
   font-size: 12px;
   margin: 10px 0 0;
 }
+
+/* A card heading that shares its row with toolbar controls. */
+.card-title {
+  margin: 0;
+  flex: 1;
+}
