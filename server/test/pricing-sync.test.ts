@@ -100,10 +100,10 @@ test("invalid local file → localError, shipped prices still used", async () =>
   expect((await loadPrices(local)).localError).toBeTruthy();
 });
 
-test("reprice limited to sessions", async () => {
+test("reprice prices every request and returns the count", async () => {
   const db = openDatabase(":memory:");
   insertRequest(db, { session_id: "a", input: 1_000_000, cost_usd: null });
   insertRequest(db, { session_id: "b", input: 1_000_000, cost_usd: null });
-  expect(reprice(db, (await loadPrices(null)).table, ["a"])).toBe(1);
-  expect(one(db, "select count(*) n from requests where cost_usd is null")).toEqual({ n: 1 });
+  expect(reprice(db, (await loadPrices(null)).table)).toBe(2);
+  expect(one(db, "select count(*) n from requests where cost_usd is null")).toEqual({ n: 0 });
 });

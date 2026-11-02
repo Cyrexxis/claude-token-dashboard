@@ -546,3 +546,20 @@ test("window timeseries: requests land in their slot; type, project and model gr
       BadRequest,
     );
 });
+
+// Bun builds SQLite with MAX_VARIABLE_NUMBER=250000.
+test("listWindowSessions handles more sessions than SQLite has bind variables", () => {
+  const d = db();
+  const ts = at("2026-10-12");
+  const s = d.query("insert into sessions (id, first_ts, last_ts) values (?, ?, ?)");
+  const r = d.query(
+    "insert into requests (message_id, request_id, session_id, ts, model, input, output) values (?, 'r', ?, ?, 'm', 1, 1)",
+  );
+  d.transaction(() => {
+    for (let i = 0; i < 250_001; i++) {
+      s.run(`s${i}`, ts, ts);
+      r.run(`m${i}`, `s${i}`, ts);
+    }
+  })();
+  expect(listWindowSessions(d, ts - 1, ts + 1).total).toBe(250_001);
+});

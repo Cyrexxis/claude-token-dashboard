@@ -14,21 +14,21 @@ type Row = {
   speed: string | null;
 };
 
-/** Recompute cost for all requests, or for those of the given sessions. Returns rows updated. */
-export function reprice(db: Database, table: PriceTable, sessionIds?: string[]): number {
-  const where = sessionIds ? "WHERE session_id IN (SELECT value FROM json_each(?))" : "";
-  const rows = db
-    .query<Row, string[]>(
-      `SELECT id, model, ts, input, output, cache_read, cache_write_5m, cache_write_1h, web_search, speed FROM requests ${where}`,
-    )
-    .all(...(sessionIds ? [JSON.stringify(sessionIds)] : []));
+/** Recompute cost for all requests. Returns rows updated. */
+export function reprice(db: Database, table: PriceTable): number {
+  // Streamed: the whole table is never held in memory. Updates touch only cost columns, not the scan order.
+  const rows = db.query<Row, []>(
+    "SELECT id, model, ts, input, output, cache_read, cache_write_5m, cache_write_1h, web_search, speed FROM requests",
+  );
   type C = number | null;
   const update = db.query<never, [C, string | null, 0 | 1, C, C, C, C, C, C, number]>(
     `UPDATE requests SET cost_usd = ?, price_period_id = ?, unpriced = ?, cost_input = ?, cost_output = ?,
        cost_cache_read = ?, cost_cache_write_5m = ?, cost_cache_write_1h = ?, cost_web_search = ? WHERE id = ?`,
   );
+  let n = 0;
   db.transaction(() => {
-    for (const r of rows) {
+    for (const r of rows.iterate()) {
+      n++;
       const p = priceRequest(table, {
         model: r.model,
         ts: r.ts,
@@ -58,5 +58,5 @@ export function reprice(db: Database, table: PriceTable, sessionIds?: string[]):
       }
     }
   })();
-  return rows.length;
+  return n;
 }

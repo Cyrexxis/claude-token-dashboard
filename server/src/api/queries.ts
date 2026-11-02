@@ -336,8 +336,9 @@ function withTotals(
 ): SessionRow[] {
   if (!records.length) return [];
   const ids = records.map((r) => r.id);
-  const where = `session_id IN (${ids.map(() => "?").join(", ")})${win ? " AND ts >= ? AND ts < ?" : ""}`;
-  const args = win ? [...ids, win.fromMs, win.toMs] : ids;
+  // One JSON parameter, not one per id: a busy window can hold more ids than SQLite allows variables.
+  const where = `session_id IN (SELECT value FROM json_each(?))${win ? " AND ts >= ? AND ts < ?" : ""}`;
+  const args = win ? [JSON.stringify(ids), win.fromMs, win.toMs] : [JSON.stringify(ids)];
   const aggs = db
     .query<Agg, (string | number)[]>(
       `SELECT session_id sessionId, COUNT(*) requests, ${TOKEN_COLS}, TOTAL(cost_usd) costUsd,

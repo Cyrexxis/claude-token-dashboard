@@ -64,12 +64,19 @@ const LOW_SIGNAL_PERCENT = 5;
 
 /** Windows are (kind, resets_at) groups of readings; usage is summed from requests at read time, so repricing needs no rebuild. */
 export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows {
+  const { fromMs, toMs } = dayBoundsMs(r);
+  // In range, or still running (a current window ignores the range). Keeps "All time" the only unbounded case.
   const groups = db
-    .query<{ kind: string; resets_at: number; peak: number }, [string]>(
+    .query<
+      { kind: string; resets_at: number; peak: number },
+      [string, number, number | null, number | null]
+    >(
       `SELECT kind, resets_at, MAX(percent_used) peak FROM plan_snapshots
-       WHERE org_id = ? AND resets_at IS NOT NULL GROUP BY kind, resets_at ORDER BY resets_at DESC`,
+       WHERE org_id = ?1 AND resets_at IS NOT NULL
+         AND (resets_at > ?2 OR ((?3 IS NULL OR resets_at >= ?3) AND (?4 IS NULL OR resets_at < ?4)))
+       GROUP BY kind, resets_at ORDER BY resets_at DESC`,
     )
-    .all(ORG);
+    .all(ORG, now, fromMs, toMs);
   const peakTs = db.query<{ ts: number }, [string, string, number, number]>(
     "SELECT MAX(ts) ts FROM plan_snapshots WHERE org_id = ? AND kind = ? AND resets_at = ? AND percent_used = ?",
   );
@@ -77,7 +84,6 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
     `SELECT TOTAL(input) + TOTAL(output) + TOTAL(cache_read) + TOTAL(cache_write_5m) + TOTAL(cache_write_1h) tokens,
        TOTAL(cost_usd) cost FROM requests WHERE ts >= ? AND ts <= ?`,
   );
-  const { fromMs, toMs } = dayBoundsMs(r);
   const current: PlanWindow[] = [];
   const past: PlanWindow[] = [];
   const seenKinds = new Set<string>();

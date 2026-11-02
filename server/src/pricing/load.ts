@@ -10,10 +10,14 @@ export type LoadedPrices = { table: PriceTable; hash: string; localError: string
 
 const sha256 = (s: string) => new Bun.CryptoHasher("sha256").update(s).digest("hex");
 
+// Validated and serialized once: ingest jobs call loadPrices every few hundred ms while a session runs.
+const checked = validatePriceFile(shippedJson);
+if (!checked.ok) throw new Error(`shipped prices.json is invalid: ${checked.errors.join("; ")}`);
+const shipped = checked.value;
+const shippedText = JSON.stringify(shipped);
+
 /** Shipped prices plus an optional local override. An invalid local file is ignored and reported. */
 export async function loadPrices(localPath: string | null): Promise<LoadedPrices> {
-  const shipped = validatePriceFile(shippedJson);
-  if (!shipped.ok) throw new Error(`shipped prices.json is invalid: ${shipped.errors.join("; ")}`);
   let local: PriceFile | null = null;
   let localText = "";
   let localError: string | null = null;
@@ -30,8 +34,8 @@ export async function loadPrices(localPath: string | null): Promise<LoadedPrices
     }
   }
   return {
-    table: buildPriceTable(shipped.value, local),
-    hash: sha256(`${JSON.stringify(shipped.value)}\n${localText}`),
+    table: buildPriceTable(shipped, local),
+    hash: sha256(`${shippedText}\n${localText}`),
     localError,
   };
 }
