@@ -1,3 +1,4 @@
+import { errorMessage } from "@td/shared";
 export type Usage = {
   input: number;
   output: number; // includes thinking tokens (verified against cost-state)
@@ -63,7 +64,7 @@ export type Parsed =
 type Obj = Record<string, unknown>;
 const isObj = (x: unknown): x is Obj => typeof x === "object" && x !== null && !Array.isArray(x);
 const str = (x: unknown): string | null => (typeof x === "string" ? x : null);
-const int = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+const num = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
 const sub = (o: Obj, k: string): Obj => (isObj(o[k]) ? (o[k] as Obj) : {});
 
 // No usage to count; api-request lines are linked to responses via requestRef only.
@@ -75,32 +76,32 @@ export function parseLine(line: string): Parsed {
   try {
     j = JSON.parse(line);
   } catch (e) {
-    return { kind: "malformed", error: `invalid JSON: ${(e as Error).message}` };
+    return { kind: "malformed", error: `invalid JSON: ${errorMessage(e)}` };
   }
   if (!isObj(j)) return { kind: "malformed", error: "line is not a JSON object" };
   const sessionId = str(j.sessionId);
   if (!sessionId || IGNORED_TYPES.has(j.type as string)) return { kind: "ignored" };
 
   if (j.type === "cost-state") {
-    const startTime = int(j.startTime);
+    const startTime = num(j.startTime);
     return {
       kind: "cost-state",
       sessionId,
       startTime,
-      ts: startTime + int(j.totalDuration), // the line has no timestamp of its own
-      totalCostUsd: int(j.totalCostUSD),
+      ts: startTime + num(j.totalDuration), // the line has no timestamp of its own
+      totalCostUsd: num(j.totalCostUSD),
       hasUnknownModelCost: j.hasUnknownModelCost === true,
       models: Object.entries(sub(j, "modelUsage")).map(([model, u]) => {
         const m = isObj(u) ? u : {};
         return {
           model,
-          input: int(m.inputTokens),
-          output: int(m.outputTokens),
-          thinking: int(m.thinkingTokens),
-          cacheRead: int(m.cacheReadInputTokens),
-          cacheWrite: int(m.cacheCreationInputTokens),
-          webSearch: int(m.webSearchRequests),
-          costUsd: int(m.costUSD),
+          input: num(m.inputTokens),
+          output: num(m.outputTokens),
+          thinking: num(m.thinkingTokens),
+          cacheRead: num(m.cacheReadInputTokens),
+          cacheWrite: num(m.cacheCreationInputTokens),
+          webSearch: num(m.webSearchRequests),
+          costUsd: num(m.costUSD),
         };
       }),
     };
@@ -125,7 +126,7 @@ export function parseLine(line: string): Parsed {
       return { kind: "malformed", error: "assistant line without a valid timestamp" };
     const u = msg.usage;
     const cc = isObj(u.cache_creation) ? u.cache_creation : null;
-    const cacheTotal = int(u.cache_creation_input_tokens);
+    const cacheTotal = num(u.cache_creation_input_tokens);
     return {
       ...env,
       kind: "response",
@@ -136,15 +137,15 @@ export function parseLine(line: string): Parsed {
       isSidechain: j.isSidechain === true,
       effort: str(j.effort),
       usage: {
-        input: int(u.input_tokens),
-        output: int(u.output_tokens),
-        cacheRead: int(u.cache_read_input_tokens),
+        input: num(u.input_tokens),
+        output: num(u.output_tokens),
+        cacheRead: num(u.cache_read_input_tokens),
         // Older versions have no 5m/1h breakdown: count the whole write as 5m.
-        cacheWrite5m: cc ? int(cc.ephemeral_5m_input_tokens) : cacheTotal,
-        cacheWrite1h: cc ? int(cc.ephemeral_1h_input_tokens) : 0,
-        thinking: int(sub(u, "output_tokens_details").thinking_tokens),
-        webSearch: int(sub(u, "server_tool_use").web_search_requests),
-        webFetch: int(sub(u, "server_tool_use").web_fetch_requests),
+        cacheWrite5m: cc ? num(cc.ephemeral_5m_input_tokens) : cacheTotal,
+        cacheWrite1h: cc ? num(cc.ephemeral_1h_input_tokens) : 0,
+        thinking: num(sub(u, "output_tokens_details").thinking_tokens),
+        webSearch: num(sub(u, "server_tool_use").web_search_requests),
+        webFetch: num(sub(u, "server_tool_use").web_fetch_requests),
         serviceTier: str(u.service_tier),
         speed: str(u.speed),
         inferenceGeo: str(u.inference_geo),

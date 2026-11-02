@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
+import { errorMessage } from "@td/shared";
 
 export type Config = {
   dataDir: string;
@@ -68,7 +69,7 @@ function readConfigFile(
     raw = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
-    throw new Error(`${path}: ${(e as Error).message}`);
+    throw new Error(`${path}: ${errorMessage(e)}`);
   }
   if (!isObject(raw)) throw new Error(`${path}: must be a JSON object`);
   const c = raw;

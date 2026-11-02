@@ -72,7 +72,7 @@ test("getStats: models, sources, unpriced and the cost-state comparison", () => 
     model: "claude-opus-5-5",
     costStateUsd: 0.03144,
   });
-  expect(s.costStateComparison[0].transcriptCostUsd).toBeCloseTo(0.03144, 9);
+  expect(s.costStateComparison[0]?.transcriptCostUsd).toBeCloseTo(0.03144, 9);
 });
 
 test("stats prints models, sources and the cost-state comparison", () => {

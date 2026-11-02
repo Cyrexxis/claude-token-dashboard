@@ -26,7 +26,8 @@ const COLS: Col[] = [
 const LAST_ACTIVE = 4;
 
 export function sortSessions(items: SessionRow[], col: number, desc: boolean): SessionRow[] {
-  const key = COLS[col].key;
+  const key = COLS[col]?.key;
+  if (!key) return items;
   return [...items].sort((a, b) => {
     const x = key(a);
     const y = key(b);
@@ -49,7 +50,7 @@ export function SessionTable({
   const rows = sortable ? sortSessions(items, sort.col, sort.desc) : items;
   // Text columns start A→Z, numbers and dates start largest/newest first.
   const pick = (col: number) =>
-    setSort(col === sort.col ? { col, desc: !sort.desc } : { col, desc: !COLS[col].text });
+    setSort(col === sort.col ? { col, desc: !sort.desc } : { col, desc: !COLS[col]?.text });
   return (
     <div className="table-wrap">
       <table>

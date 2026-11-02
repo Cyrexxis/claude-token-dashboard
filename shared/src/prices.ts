@@ -57,13 +57,16 @@ export function validatePriceFile(
   };
   const noOverlap = (ps: { effective_from?: unknown; effective_to?: unknown }[], path: string) => {
     const spans = ps
-      .map((p) => [
-        dateMs((p.effective_from as string) ?? null) ?? -Infinity,
-        dateMs((p.effective_to as string) ?? null) ?? Infinity,
+      .map((p): [number, number] => [
+        dateMs(typeof p.effective_from === "string" ? p.effective_from : null) ?? -Infinity,
+        dateMs(typeof p.effective_to === "string" ? p.effective_to : null) ?? Infinity,
       ])
       .sort((a, b) => a[0] - b[0]);
-    for (let i = 1; i < spans.length; i++)
-      if (spans[i][0] < spans[i - 1][1]) err(path, "periods overlap");
+    let prevTo = -Infinity;
+    for (const [from, to] of spans) {
+      if (from < prevTo) err(path, "periods overlap");
+      prevTo = to;
+    }
   };
   const rates = (v: unknown, path: string) => {
     if (!isObj(v)) {

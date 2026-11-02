@@ -8,9 +8,11 @@ import {
   type PriceRow,
   type Prices,
   type RequestRow,
+  type RollupGroup,
   type SessionDetail,
   type SessionList,
   type SessionRow,
+  type SourceKind,
   type SourceRow,
   type Status,
   type Summary,
@@ -29,7 +31,7 @@ export class BadRequest extends Error {}
 const pad = (n: number) => String(n).padStart(2, "0");
 const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toDate = (day: string) => {
-  const [y, m, d] = day.split("-").map(Number);
+  const [y = 0, m = 1, d = 1] = day.split("-").map(Number);
   return new Date(y, m - 1, d);
 };
 
@@ -202,7 +204,8 @@ function buildSeries(
     }));
     for (const row of rows) {
       const i = src.at(row.b);
-      if (i !== undefined) for (const s of series) s.values[i] += row[s.key];
+      if (i !== undefined)
+        for (const s of series) s.values[i] = (s.values[i] ?? 0) + (row[s.key] ?? 0);
     }
     // Web search only shows up when something was searched.
     return series.filter((s) => s.key !== "webSearch" || s.values.some(Boolean));
@@ -220,7 +223,7 @@ function buildSeries(
     if (i === undefined) continue;
     const values = byKey.get(row.k) ?? buckets.map(() => 0);
     byKey.set(row.k, values);
-    values[i] += row.v;
+    values[i] = (values[i] ?? 0) + row.v;
   }
   const total = (v: number[]) => v.reduce((a, b) => a + b, 0);
   const ranked = [...byKey].sort((a, b) => total(b[1]) - total(a[1]) || a[0].localeCompare(b[0]));
@@ -237,14 +240,14 @@ function buildSeries(
     series.push({
       key: "other",
       label: "Other",
-      values: buckets.map((_, i) => rest.reduce((a, [, v]) => a + v[i], 0)),
+      values: buckets.map((_, i) => rest.reduce((a, [, v]) => a + (v[i] ?? 0), 0)),
     });
   return series;
 }
 
 export function getTimeseries(
   db: Database,
-  q: { metric: Metric; group: Group; bucket: Bucket } & Range,
+  q: { metric: Metric; group: RollupGroup; bucket: Bucket } & Range,
 ): Timeseries {
   const earliest = db
     .query<{ day: string | null }, []>("SELECT MIN(day) day FROM daily_rollups")
@@ -302,7 +305,7 @@ type SessionRecord = {
   title: string | null;
   project: string | null;
   cwd: string | null;
-  sourceKind: string | null;
+  sourceKind: SourceKind | null;
   entrypoint: string | null;
   firstTs: number | null;
   lastTs: number | null;
@@ -424,7 +427,8 @@ const TOKENS_OF = (r: Tokens): Tokens => ({
 export function getSession(db: Database, id: string): SessionDetail | null {
   const record = db.query<SessionRecord, [string]>(`${SESSION_SELECT} WHERE s.id = ?`).get(id);
   if (!record) return null;
-  const [row] = withTotals(db, [record]);
+  const row = withTotals(db, [record])[0];
+  if (!row) return null;
   const requests = db
     .query<Omit<RequestRow, "unpriced"> & { unpriced: number }, [string]>(
       `SELECT id, ts, model, agent_id agentId, input, output, cache_read cacheRead, cache_write_5m cacheWrite5m,

@@ -26,9 +26,52 @@ export type Summary = {
   subscriptionMonthlyUsd: number | null;
 };
 
-export type Metric = "tokens" | "cost" | "requests";
-export type Group = "type" | "model" | "source" | "project" | "agent";
-export type Bucket = "day" | "week" | "month";
+export const METRICS = ["tokens", "cost", "requests"] as const;
+export type Metric = (typeof METRICS)[number];
+/** Groups the daily rollups can split by (`/timeseries`). */
+export const ROLLUP_GROUPS = ["type", "model", "source", "project"] as const;
+export type RollupGroup = (typeof ROLLUP_GROUPS)[number];
+/** Request-level series (`/plan/timeseries`) can also split by agent. */
+export const GROUPS = [...ROLLUP_GROUPS, "agent"] as const;
+export type Group = (typeof GROUPS)[number];
+export const GROUP_LABEL: Record<Group, string> = {
+  type: "Token type",
+  model: "Model",
+  source: "Source",
+  project: "Project",
+  agent: "Agent",
+};
+export const BUCKETS = ["day", "week", "month"] as const;
+export type Bucket = (typeof BUCKETS)[number];
+
+export type SourceKind = "wsl" | "linux" | "windows";
+
+/** Plan kinds with a known window length. Readings may carry other kinds (e.g. `spend_limit`), so wire types keep `kind: string`. */
+export const TIMED_PLAN_KINDS = ["five_hour", "seven_day"] as const;
+export type TimedPlanKind = (typeof TIMED_PLAN_KINDS)[number];
+export const isTimedPlanKind = (k: string): k is TimedPlanKind =>
+  (TIMED_PLAN_KINDS as readonly string[]).includes(k);
+
+/** Server-sent events and their payloads. */
+export type UsageUpdated = { sessionIds: string[]; from: number; to: number };
+export type IngestStatus = { running: boolean; files: number; errors: number };
+export type PricesUpdated = { hash: string };
+export const LIVE_EVENTS = [
+  "usage.updated",
+  "prices.updated",
+  "ingest.status",
+  "plan.snapshot",
+] as const;
+export type LiveEvent = (typeof LIVE_EVENTS)[number];
+export type LiveEventPayloads = {
+  "usage.updated": UsageUpdated;
+  "prices.updated": PricesUpdated;
+  "ingest.status": IngestStatus;
+  "plan.snapshot": PlanSnapshotPoint;
+};
+
+/** The message of anything thrown; a non-Error is stringified. */
+export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 export type Timeseries = {
   buckets: string[];
   series: { key: string; label: string; values: number[] }[];
@@ -39,7 +82,7 @@ export type SessionRow = {
   title: string | null;
   project: string | null;
   cwd: string | null;
-  sourceKind: string | null;
+  sourceKind: SourceKind | null;
   entrypoint: string | null;
   model: string | null;
   firstTs: number | null;
@@ -85,7 +128,7 @@ export type SessionDetail = {
 
 export type SourceRow = {
   id: number;
-  kind: string;
+  kind: SourceKind;
   host: string | null;
   distro: string | null;
   rootPath: string;

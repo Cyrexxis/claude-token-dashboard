@@ -1,12 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import type {
-  Group,
-  PlanSnapshotPoint,
-  PlanSnapshots,
-  PlanWindow,
-  PlanWindows,
-  SessionList,
-  Timeseries,
+import {
+  GROUP_LABEL,
+  type Group,
+  isTimedPlanKind,
+  type PlanSnapshotPoint,
+  type PlanSnapshots,
+  type PlanWindow,
+  type PlanWindows,
+  type SessionList,
+  TIMED_PLAN_KINDS,
+  type TimedPlanKind,
+  type Timeseries,
 } from "@td/shared";
 import { useEffect, useState } from "react";
 import {
@@ -75,8 +79,8 @@ function WindowCard({ w, now }: { w: PlanWindow; now: number }) {
   );
 }
 
-type Kind = "five_hour" | "seven_day";
-const KINDS: Kind[] = ["five_hour", "seven_day"];
+type Kind = TimedPlanKind;
+const KINDS = TIMED_PLAN_KINDS;
 
 function WindowTabs({ kind, onChange }: { kind: Kind; onChange: (k: Kind) => void }) {
   return (
@@ -115,7 +119,7 @@ export function mergeReadings(
   const last: Record<string, number> = {};
   let i = 0;
   return times.map((ts) => {
-    for (; i < own.length && own[i].ts <= ts; i++) last[own[i].kind] = own[i].percentUsed;
+    for (let p = own[i]; p && p.ts <= ts; p = own[++i]) last[p.kind] = p.percentUsed;
     return { ...last, ts };
   });
 }
@@ -185,7 +189,7 @@ function Timeline({ w, current, now }: { w: PlanWindow; current: PlanWindow[]; n
             dataKey={k}
             name={kindLabel(k)}
             type="stepAfter"
-            stroke={seriesColor(k, KINDS.indexOf(k as Kind))}
+            stroke={seriesColor(k, (KINDS as readonly string[]).indexOf(k))}
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
@@ -216,12 +220,7 @@ function WindowSessions({ w }: { w: PlanWindow }) {
 }
 
 const STEP_MS: Record<Kind, number> = { five_hour: 5 * 60_000, seven_day: 3 * 3_600_000 };
-const GROUPS: [Group, string][] = [
-  ["type", "Token type"],
-  ["model", "Model"],
-  ["source", "Source"],
-  ["project", "Project"],
-];
+const GROUPS: Group[] = ["type", "model", "source", "project"];
 const slotLabel = (kind: Kind) => (b: string) =>
   kind === "five_hour"
     ? hourTick(Number(b))
@@ -234,7 +233,7 @@ const slotLabel = (kind: Kind) => (b: string) =>
 /** Tokens or cost in the current window, 5-minute slots for 5-hour, 3-hour slots for weekly. */
 function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: PlanWindow | null }) {
   const [tabKind, setKind] = useState<Kind>("five_hour");
-  const kind = (picked?.kind as Kind | undefined) ?? tabKind;
+  const kind = picked && isTimedPlanKind(picked.kind) ? picked.kind : tabKind;
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const [group, setGroup] = useState<Group>("type");
   const w = picked ?? current.find((c) => c.kind === kind && c.startMs !== null);
@@ -267,9 +266,9 @@ function WindowSeries({ current, picked }: { current: PlanWindow[]; picked: Plan
         <label>
           Group by{" "}
           <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
-            {GROUPS.map(([g, l]) => (
+            {GROUPS.map((g) => (
               <option key={g} value={g}>
-                {l}
+                {GROUP_LABEL[g]}
               </option>
             ))}
           </select>

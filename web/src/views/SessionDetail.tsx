@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { SessionDetail as Detail, Group, Timeseries } from "@td/shared";
+import { type SessionDetail as Detail, GROUP_LABEL, type Group, type Timeseries } from "@td/shared";
 import { useState } from "react";
 import {
   Area,
@@ -17,11 +17,11 @@ import { SERIES_VARS, TimeChart } from "../components/TimeChart";
 import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
 
 const M = 60_000;
-const STEPS = [M, 5 * M, 15 * M, 60 * M, 3 * 60 * M, 24 * 60 * M];
+const DAY = 24 * 60 * M;
+const STEPS = [M, 5 * M, 15 * M, 60 * M, 3 * 60 * M, DAY];
 const STEP_LABEL = ["1-minute", "5-minute", "15-minute", "1-hour", "3-hour", "1-day"];
 /** Smallest slot that keeps a session of this length to at most 60 bars. */
-export const pickStep = (durationMs: number) =>
-  STEPS.find((s) => durationMs / s < 60) ?? (STEPS.at(-1) as number);
+export const pickStep = (durationMs: number) => STEPS.find((s) => durationMs / s < 60) ?? DAY;
 /** Start of the local-time slot holding `ts`, so hour and day slots begin on the clock. */
 export function slotStart(ts: number, step: number): number {
   const local = -new Date(ts).getTimezoneOffset() * M;
@@ -74,8 +74,11 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
         <label>
           Group by{" "}
           <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
-            <option value="type">Token type</option>
-            <option value="agent">Agent</option>
+            {(["type", "agent"] as const).map((g) => (
+              <option key={g} value={g}>
+                {GROUP_LABEL[g]}
+              </option>
+            ))}
           </select>
         </label>
       </div>

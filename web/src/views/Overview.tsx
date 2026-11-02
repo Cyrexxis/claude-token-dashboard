@@ -21,10 +21,11 @@ export function Overview({ range }: ViewProps) {
   // A price change is marked on the bucket that contains its effective date.
   const priceMarks = (buckets: string[]) =>
     (prices.data?.periods ?? []).flatMap((p) => {
-      if (!p.effectiveFrom || !buckets.length) return [];
-      if (p.effectiveFrom < buckets[0]) return [];
-      if (range.to && p.effectiveFrom > range.to) return [];
-      const at = buckets.filter((b) => b <= (p.effectiveFrom as string)).at(-1);
+      const from = p.effectiveFrom;
+      const first = buckets[0];
+      if (!from || first === undefined || from < first) return [];
+      if (range.to && from > range.to) return [];
+      const at = buckets.filter((b) => b <= from).at(-1);
       return at ? [{ day: at, label: `${p.modelId} price change` }] : [];
     });
   const t = s.tokens;

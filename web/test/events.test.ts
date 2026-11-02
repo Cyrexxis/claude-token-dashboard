@@ -48,6 +48,8 @@ test("plan.snapshot invalidates plan only", () => {
 });
 
 test("usage.updated and prices.updated also invalidate plan (window cost and tokens change)", () => {
-  expect(keysToInvalidate("usage.updated", { sessionIds: [] })).toContainEqual(["plan"]);
+  expect(keysToInvalidate("usage.updated", { sessionIds: [], from: 0, to: 0 })).toContainEqual([
+    "plan",
+  ]);
   expect(keysToInvalidate("prices.updated", { hash: "x" })).toContainEqual(["plan"]);
 });

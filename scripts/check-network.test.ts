@@ -17,7 +17,7 @@ test("flags fetch and node:http imports", () => {
   });
   const hits = findNetworkUse(dir);
   expect(hits.map((h) => basename(h.file)).sort()).toEqual(["a.ts", "b.ts"]);
-  expect(hits[0].line).toBe(1);
+  expect(hits[0]?.line).toBe(1);
 });
 
 test("ignores clean files and Bun.serve", () => {

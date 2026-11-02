@@ -151,8 +151,8 @@ test("window math", () => {
 test("per-1 % stops at the peak reading", () => {
   const { db } = windowFixture();
   const [w] = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z")).current;
-  expect(w.costUsd).toBe(4); // includes the 15:00 request
-  expect(w.costAtPeak).toBe(2); // excludes it
+  expect(w?.costUsd).toBe(4); // includes the 15:00 request
+  expect(w?.costAtPeak).toBe(2); // excludes it
 });
 
 test("tokens count all input and cache types, not thinking", () => {
@@ -172,8 +172,8 @@ test("tokens count all input and cache types, not thinking", () => {
     thinking: 1000,
   });
   const [w] = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z")).current;
-  expect(w.tokens).toBe(31);
-  expect(w.tokensAtPeak).toBe(31);
+  expect(w?.tokens).toBe(31);
+  expect(w?.tokensAtPeak).toBe(31);
 });
 
 test("current vs past", () => {
@@ -219,16 +219,16 @@ test("lowSignal below 5 %", () => {
   one("five_hour", 4.9);
   one("seven_day", 5);
   const byKind = Object.fromEntries(getPlanWindows(db, NONE, NOW).current.map((w) => [w.kind, w]));
-  expect(byKind.five_hour.lowSignal).toBe(true);
-  expect(byKind.seven_day.lowSignal).toBe(false);
+  expect(byKind.five_hour?.lowSignal).toBe(true);
+  expect(byKind.seven_day?.lowSignal).toBe(false);
 });
 
 test("peak 0 → no per-1 % figures", () => {
   const db = openDatabase(":memory:");
   recordSnapshots(db, { windows: [{ kind: "five_hour", percentUsed: 0, resetsAt: RESET }] }, NOW);
   const [w] = getPlanWindows(db, NONE, NOW).current;
-  expect(w.usdPerPercent).toBeNull();
-  expect(w.tokensPerPercent).toBeNull();
+  expect(w?.usdPerPercent).toBeNull();
+  expect(w?.tokensPerPercent).toBeNull();
 });
 
 test("range filters past windows and points; current ignores the range", () => {
@@ -275,5 +275,5 @@ test("past windows newest first", () => {
     );
   const past = getPlanWindows(db, NONE, at("2026-10-13T00:00:00Z")).past;
   expect(past.map((w) => new Date(w.resetsAt).getUTCDate())).toEqual([12, 11, 10]);
-  expect(past[0].startMs).toBe(at("2026-10-12T17:00:00Z") - 5 * H);
+  expect(past[0]?.startMs).toBe(at("2026-10-12T17:00:00Z") - 5 * H);
 });

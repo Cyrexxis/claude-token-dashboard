@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import type { ApiError } from "@td/shared";
+import type { ApiError, LiveEventPayloads } from "@td/shared";
 import { useEffect } from "react";
 import { keysToInvalidate, LIVE_EVENTS } from "./events";
 
@@ -60,9 +60,9 @@ export function useLiveEvents(): void {
     };
     for (const event of LIVE_EVENTS)
       es.addEventListener(event, (e) => {
-        let data: unknown = null;
+        let data: LiveEventPayloads[typeof event] | null = null;
         try {
-          data = JSON.parse((e as MessageEvent).data);
+          data = JSON.parse((e as MessageEvent).data); // the server's own payload (LiveEventPayloads)
         } catch {}
         for (const queryKey of keysToInvalidate(event, data))
           void client.invalidateQueries({ queryKey });

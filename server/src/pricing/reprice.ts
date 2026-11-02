@@ -22,7 +22,8 @@ export function reprice(db: Database, table: PriceTable, sessionIds?: string[]):
       `SELECT id, model, ts, input, output, cache_read, cache_write_5m, cache_write_1h, web_search, speed FROM requests ${where}`,
     )
     .all(...(sessionIds ? [JSON.stringify(sessionIds)] : []));
-  const update = db.query(
+  type C = number | null;
+  const update = db.query<never, [C, string | null, 0 | 1, C, C, C, C, C, C, number]>(
     `UPDATE requests SET cost_usd = ?, price_period_id = ?, unpriced = ?, cost_input = ?, cost_output = ?,
        cost_cache_read = ?, cost_cache_write_5m = ?, cost_cache_write_1h = ?, cost_web_search = ? WHERE id = ?`,
   );

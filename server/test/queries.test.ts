@@ -120,10 +120,10 @@ test("week buckets start on Monday; month on the 1st", () => {
   const q = { metric: "requests", group: "model", from: "2026-10-18", to: "2026-10-19" } as const;
   const w = getTimeseries(d, { ...q, bucket: "week" });
   expect(w.buckets).toEqual(["2026-10-12", "2026-10-19"]);
-  expect(w.series[0].values).toEqual([1, 1]);
+  expect(w.series[0]?.values).toEqual([1, 1]);
   const m = getTimeseries(d, { ...q, bucket: "month" });
   expect(m.buckets).toEqual(["2026-10-01"]);
-  expect(m.series[0].values).toEqual([2]);
+  expect(m.series[0]?.values).toEqual([2]);
 });
 
 test("tokens by type: five series, thinking not included", () => {
@@ -175,11 +175,11 @@ test("top 8 + other; bucket sums equal ungrouped totals", () => {
     "m3",
     "other",
   ]);
-  expect(byModel.series[8].label).toBe("Other");
+  expect(byModel.series[8]?.label).toBe("Other");
   const byType = getTimeseries(d, { ...q, group: "type" });
   byModel.buckets.forEach((_, i) => {
-    const grouped = byModel.series.reduce((a, s) => a + s.values[i], 0);
-    const total = byType.series.reduce((a, s) => a + s.values[i], 0);
+    const grouped = byModel.series.reduce((a, s) => a + (s.values[i] ?? 0), 0);
+    const total = byType.series.reduce((a, s) => a + (s.values[i] ?? 0), 0);
     expect(grouped).toBe(total);
   });
 });
@@ -295,7 +295,7 @@ test("sessions: range overlap, newest first, paging, totals", () => {
   const page = listSessions(d, { from: null, to: null, limit: 2 });
   expect(page.total).toBe(3);
   expect(page.items.map((s) => s.id)).toEqual(["s3", "s2"]);
-  expect(page.items[0].title).toBe("AI named");
+  expect(page.items[0]?.title).toBe("AI named");
   expect(
     listSessions(d, { from: null, to: null, limit: 2, offset: 2 }).items.map((s) => s.id),
   ).toEqual(["s1"]);
@@ -364,7 +364,7 @@ test("session detail: requests by ts, subagent breakdown, costStateUsd", () => {
   ]);
   expect(s?.requests[2]).toMatchObject({ agentId: "x", input: 7, unpriced: false });
   d.run("insert into agents (agent_id, agent_type) values ('x', 'Explore')");
-  expect(getSession(d, "s1")?.agents[0].name).toBe("Explore"); // no description: falls back to type
+  expect(getSession(d, "s1")?.agents[0]?.name).toBe("Explore"); // no description: falls back to type
   expect(s?.agents).toEqual([
     {
       agentId: "x",

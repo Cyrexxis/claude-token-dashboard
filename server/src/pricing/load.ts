@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { type PriceFile, validatePriceFile } from "@td/shared";
+import { errorMessage, type PriceFile, validatePriceFile } from "@td/shared";
 import shippedJson from "../../../prices/prices.json"; // embedded in the compiled program
 import { bus } from "../events";
 import { rebuildRollups } from "../rollups";
@@ -26,7 +26,7 @@ export async function loadPrices(localPath: string | null): Promise<LoadedPrices
         localText = JSON.stringify(v.value);
       } else localError = `${localPath}: ${v.errors.join("; ")}`;
     } catch (e) {
-      localError = `${localPath}: ${(e as Error).message}`;
+      localError = `${localPath}: ${errorMessage(e)}`;
     }
   }
   return {
@@ -48,7 +48,7 @@ export function syncPrices(
   let repriced = 0;
   db.transaction(() => {
     db.run("DELETE FROM price_periods");
-    const ins = db.query(
+    const ins = db.query<never, [string, string, number | null, number | null, string, string]>(
       "INSERT INTO price_periods (id, model_id, effective_from, effective_to, origin, values_json) VALUES (?, ?, ?, ?, ?, ?)",
     );
     for (const m of loaded.table.models)

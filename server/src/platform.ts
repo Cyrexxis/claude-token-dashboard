@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
+import type { SourceKind } from "@td/shared";
 
-export type Platform = { kind: "wsl" | "linux" | "windows"; host: string; distro: string | null };
+export type Platform = { kind: SourceKind; host: string; distro: string | null };
 
 function readProcVersion(): string {
   try {

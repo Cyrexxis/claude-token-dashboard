@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { fileURLToPath } from "node:url";
+import { errorMessage } from "@td/shared";
 import { createApp } from "./api/app";
 import { type Config, loadConfig } from "./config";
 import { writeConnectionFile } from "./connection";
@@ -47,7 +48,7 @@ function serve(db: Database, config: Config, ingest: IngestService) {
     try {
       writeConnectionFile(p, url);
     } catch (e) {
-      console.error(`connection file ${p}: ${(e as Error).message}`); // e.g. /mnt/c not mounted
+      console.error(`connection file ${p}: ${errorMessage(e)}`); // e.g. /mnt/c not mounted
     }
   }
   console.log(`dashboard: ${url} (connection files: ${files.join(", ")})`);
@@ -94,7 +95,7 @@ async function main(cmd: string | undefined) {
       INSTALL[cmd as keyof typeof INSTALL](installDeps());
       return;
     } catch (e) {
-      console.error((e as Error).message);
+      console.error(errorMessage(e));
       process.exit(1);
     }
   }
@@ -147,7 +148,7 @@ async function main(cmd: string | undefined) {
             `${new Date().toISOString()} ${root.rootPath}: +${r.newRequests} requests, ${r.errors} errors`,
           ),
         )
-        .catch((e) => console.error(`ingest failed: ${(e as Error).message}`)),
+        .catch((e) => console.error(`ingest failed: ${errorMessage(e)}`)),
   });
   console.log(`watching ${roots.length} root(s); Ctrl+C to stop`);
   const stop = () => {

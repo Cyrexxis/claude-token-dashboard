@@ -241,3 +241,10 @@ test("wrong Host is rejected before routes and static", async () => {
     expect(r.status).toBe(403);
   }
 });
+
+test("group=agent is accepted by /plan/timeseries only", async () => {
+  const { req } = setup();
+  expect((await req("/api/v1/timeseries?group=agent")).status).toBe(400);
+  const span = "fromMs=0&toMs=3600000&stepMs=60000";
+  expect((await req(`/api/v1/plan/timeseries?group=agent&${span}`)).status).toBe(200);
+});

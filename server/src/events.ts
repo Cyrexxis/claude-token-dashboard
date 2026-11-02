@@ -1,9 +1,7 @@
 import { EventEmitter } from "node:events";
-import type { PlanSnapshotPoint } from "@td/shared";
+import type { IngestStatus, PlanSnapshotPoint, PricesUpdated, UsageUpdated } from "@td/shared";
 
-export type UsageUpdated = { sessionIds: string[]; from: number; to: number };
-export type IngestStatus = { running: boolean; files: number; errors: number };
-export type PricesUpdated = { hash: string };
+export type { IngestStatus, PricesUpdated, UsageUpdated };
 
 // In-process bus; phase 2 forwards these to SSE clients.
 export const bus = new EventEmitter<{

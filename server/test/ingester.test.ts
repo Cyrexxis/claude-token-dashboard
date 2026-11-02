@@ -186,12 +186,18 @@ test('repeated agent-name lines keep one value; tag "" clears tag', async () => 
 
 test("append, partial line completed later, truncation and replacement", async () => {
   const { db, file, ingest } = setup();
-  const lines = ["m1", "m2", "m3", "m4"].map((id) => assistant({ messageId: id }));
+  const [m1, m2, m3, m4] = ["m1", "m2", "m3", "m4"].map((id) => assistant({ messageId: id })) as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  const lines = [m1, m2, m3, m4];
   const p = file("s1.jsonl", []);
-  writeFileSync(p, `${lines[0]}\n${lines[1]}\n${lines[2].slice(0, 30)}`);
+  writeFileSync(p, `${m1}\n${m2}\n${m3.slice(0, 30)}`);
   await ingest(p);
   expect(count(db)).toBe(2);
-  appendFileSync(p, `${lines[2].slice(30)}\n${lines[3]}\n`);
+  appendFileSync(p, `${m3.slice(30)}\n${m4}\n`);
   await ingest(p);
   expect(count(db)).toBe(4);
   const replacement = `${p}.new`;
@@ -200,12 +206,12 @@ test("append, partial line completed later, truncation and replacement", async (
   expect((await ingest(p)).newRequests).toBe(0);
   const size = Bun.file(p).size;
   expect(one(db, "select offset, size from files")).toEqual({ offset: size, size });
-  truncateSync(p, lines[0].length + 1);
+  truncateSync(p, m1.length + 1);
   expect((await ingest(p)).newRequests).toBe(0);
   expect(count(db)).toBe(4);
   expect(one(db, "select offset, size from files")).toEqual({
-    offset: lines[0].length + 1,
-    size: lines[0].length + 1,
+    offset: m1.length + 1,
+    size: m1.length + 1,
   });
 });
 

@@ -1,18 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Bucket, Group, Metric, Timeseries } from "@td/shared";
+import {
+  BUCKETS,
+  type Bucket,
+  GROUP_LABEL,
+  type Metric,
+  type RollupGroup,
+  type Timeseries,
+} from "@td/shared";
 import { useState } from "react";
 import { api } from "../api";
 import { TimeChart } from "../components/TimeChart";
 import { autoBucket, fmtTokens, fmtUsd, type Range } from "../format";
-
-const BUCKETS: Bucket[] = ["day", "week", "month"];
-const LABELS: Record<Group, string> = {
-  type: "Token type",
-  model: "Model",
-  source: "Source",
-  project: "Project",
-  agent: "Agent",
-};
 
 /** Group + bucket selectors over one stacked bar chart. */
 export function SeriesView({
@@ -25,12 +23,12 @@ export function SeriesView({
 }: {
   range: Range;
   metric: Metric;
-  groups: Group[];
+  groups: [RollupGroup, ...RollupGroup[]]; // the first is the initial choice
   title: string;
   marks?: (buckets: string[]) => { day: string; label: string }[];
   defaultHidden?: string[];
 }) {
-  const [group, setGroup] = useState<Group>(groups[0]);
+  const [group, setGroup] = useState<RollupGroup>(groups[0]);
   const [picked, setPicked] = useState<Bucket | null>(null);
   const bucket = picked ?? autoBucket(range);
   const params = { ...range, metric, group, bucket };
@@ -44,10 +42,10 @@ export function SeriesView({
         <h2 style={{ margin: 0, flex: 1 }}>{title}</h2>
         <label>
           Group by{" "}
-          <select value={group} onChange={(e) => setGroup(e.target.value as Group)}>
+          <select value={group} onChange={(e) => setGroup(e.target.value as RollupGroup)}>
             {groups.map((g) => (
               <option key={g} value={g}>
-                {LABELS[g]}
+                {GROUP_LABEL[g]}
               </option>
             ))}
           </select>

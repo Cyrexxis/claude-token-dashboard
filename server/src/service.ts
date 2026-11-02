@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { type IngestState, validatePriceFile } from "@td/shared";
+import { errorMessage, type IngestState, validatePriceFile } from "@td/shared";
 import type { Config } from "./config";
 import { bus } from "./events";
 import { listTranscripts } from "./ingest/discovery";
@@ -137,7 +137,7 @@ export function createIngestService(db: Database, config: Config, roots: Root[])
       try {
         parsed = JSON.parse(text);
       } catch (e) {
-        return { ok: false, errors: [(e as Error).message] };
+        return { ok: false, errors: [errorMessage(e)] };
       }
       const v = validatePriceFile(parsed);
       if (!v.ok) return { ok: false, errors: v.errors };

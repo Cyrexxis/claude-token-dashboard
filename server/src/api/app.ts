@@ -1,7 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type ApiError, type Bucket, type Group, type Metric, PROTOCOL } from "@td/shared";
+import {
+  type ApiError,
+  BUCKETS,
+  errorMessage,
+  GROUPS,
+  LIVE_EVENTS,
+  METRICS,
+  PROTOCOL,
+  ROLLUP_GROUPS,
+} from "@td/shared";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { streamSSE } from "hono/streaming";
@@ -33,7 +42,6 @@ export type AppDeps = {
   webDir: string | null;
 };
 
-const SSE_EVENTS = ["usage.updated", "prices.updated", "ingest.status", "plan.snapshot"] as const;
 const PING_MS = 25_000;
 
 function oneOf<T extends string>(
@@ -64,7 +72,7 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     if (e instanceof BadRequest)
       return c.json<ApiError>({ error: "bad_request", message: e.message }, 400);
     console.error(e);
-    return c.json<ApiError>({ error: "internal", message: (e as Error).message }, 500);
+    return c.json<ApiError>({ error: "internal", message: errorMessage(e) }, 500);
   });
 
   app.get("/api/health", (c) => c.json({ ok: true, version: SERVER_VERSION, protocol: PROTOCOL }));
@@ -91,9 +99,9 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     return c.json(
       getTimeseries(db, {
         ...parseRange(q),
-        metric: oneOf<Metric>("metric", q.metric, ["tokens", "cost", "requests"], "tokens"),
-        group: oneOf<Group>("group", q.group, ["type", "model", "source", "project"], "type"),
-        bucket: oneOf<Bucket>("bucket", q.bucket, ["day", "week", "month"], "day"),
+        metric: oneOf("metric", q.metric, METRICS, "tokens"),
+        group: oneOf("group", q.group, ROLLUP_GROUPS, "type"),
+        bucket: oneOf("bucket", q.bucket, BUCKETS, "day"),
       }),
     );
   });
@@ -118,13 +126,8 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     const q = c.req.query();
     return c.json(
       getWindowTimeseries(db, {
-        metric: oneOf<Metric>("metric", q.metric, ["tokens", "cost", "requests"], "tokens"),
-        group: oneOf<Group>(
-          "group",
-          q.group,
-          ["type", "model", "source", "project", "agent"],
-          "type",
-        ),
+        metric: oneOf("metric", q.metric, METRICS, "tokens"),
+        group: oneOf("group", q.group, GROUPS, "type"),
         fromMs: Number(q.fromMs),
         toMs: Number(q.toMs),
         stepMs: Number(q.stepMs),
@@ -162,22 +165,20 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
       throw new BadRequest("sessionId must be a string of 1 to 200 characters");
     ingest
       .ingestSession(id)
-      .catch((e) => console.error(`ingest trigger ${id} failed: ${(e as Error).message}`));
+      .catch((e) => console.error(`ingest trigger ${id} failed: ${errorMessage(e)}`));
     return c.json({ queued: true }, 202);
   });
   v1.post("/sources/:id/rescan", (c) => {
     const id = Number(c.req.param("id"));
     const known = db.query("SELECT 1 FROM sources WHERE id = ?").get(id);
     if (!known) return c.json<ApiError>({ error: "not_found", message: "no such source" }, 404);
-    ingest
-      .rescanSource(id)
-      .catch((e) => console.error(`rescan ${id} failed: ${(e as Error).message}`));
+    ingest.rescanSource(id).catch((e) => console.error(`rescan ${id} failed: ${errorMessage(e)}`));
     return c.json({ queued: true }, 202);
   });
 
   v1.get("/events", (c) =>
     streamSSE(c, async (stream) => {
-      const forward = SSE_EVENTS.map((event) => {
+      const forward = LIVE_EVENTS.map((event) => {
         const listener = (data: unknown) =>
           void stream.writeSSE({ event, data: JSON.stringify(data) }).catch(() => {});
         bus.on(event, listener);

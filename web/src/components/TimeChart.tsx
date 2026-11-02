@@ -82,7 +82,7 @@ export function TimeChart({
   const rows = data.buckets.map((bucket, i) => {
     const row: Record<string, string | number> = { bucket };
     data.series.forEach((s, j) => {
-      row[`s${j}`] = s.values[i];
+      row[`s${j}`] = s.values[i] ?? 0;
     });
     return row;
   });

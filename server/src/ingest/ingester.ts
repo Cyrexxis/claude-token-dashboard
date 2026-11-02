@@ -1,10 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { relative, sep } from "node:path";
+import { errorMessage } from "@td/shared";
 import { bus } from "../events";
 import { type PriceTable, priceRequest } from "../pricing/engine";
 import { rebuildRollups } from "../rollups";
-import { type Parsed, parseLine } from "./parse";
+import { type Parsed, parseLine, type Usage } from "./parse";
 import { planRead, readLines, statFile } from "./reader";
 
 export type Root = {
@@ -49,20 +50,24 @@ function statements(db: Database) {
     insertFile: db.query<{ id: number }, [number, string]>(
       "INSERT INTO files (source_id, path) VALUES (?, ?) RETURNING id",
     ),
-    startFile: db.query("UPDATE files SET file_key = ?, mtime = ?, offset = ? WHERE id = ?"),
-    advance: db.query(
+    startFile: db.query<never, [string, number, number, number]>(
+      "UPDATE files SET file_key = ?, mtime = ?, offset = ? WHERE id = ?",
+    ),
+    advance: db.query<never, [number, number, string | null, string | null, number]>(
       `UPDATE files SET offset = ?, error_count = error_count + ?, last_error = COALESCE(?, last_error),
          session_id = COALESCE(session_id, ?) WHERE id = ?`,
     ),
-    finishFile: db.query("UPDATE files SET size = ?, last_ingest_at = ? WHERE id = ?"),
+    finishFile: db.query<never, [number, number, number]>(
+      "UPDATE files SET size = ?, last_ingest_at = ? WHERE id = ?",
+    ),
     agentKnown: db.query<{ one: number }, [string]>("SELECT 1 one FROM agents WHERE agent_id = ?"),
     agent: db.query<unknown, [string, string | null, string | null]>(
       "INSERT OR IGNORE INTO agents (agent_id, agent_type, description) VALUES (?, ?, ?)",
     ),
-    fileError: db.query(
+    fileError: db.query<never, [string, string]>(
       "UPDATE files SET error_count = error_count + 1, last_error = ? WHERE path = ?",
     ),
-    request: db.query(
+    request: db.query<never, [RequestParams]>(
       `INSERT INTO requests (message_id, request_id, session_id, agent_id, ts, model, source_id, file_id,
          input, output, cache_read, cache_write_5m, cache_write_1h, thinking, web_search, web_fetch,
          service_tier, speed, inference_geo, effort, is_sidechain, cost_usd, price_period_id, unpriced, usage_raw_json,
@@ -84,7 +89,7 @@ function statements(db: Database) {
        WHERE excluded.output > requests.output`,
     ),
     // Latest non-null wins per column; title and ai_title are separate so an AI title never hides a rename.
-    session: db.query(
+    session: db.query<never, [SessionParams]>(
       `INSERT INTO sessions (id, source_id, project, cwd, entrypoint, cc_version, title, ai_title,
          agent_name, agent_color, agent_setting, tag, first_ts, last_ts)
        VALUES ($id, $sourceId, $project, $cwd, $entrypoint, $version, $title, $aiTitle,
@@ -100,7 +105,7 @@ function statements(db: Database) {
          first_ts = MIN(COALESCE(first_ts, excluded.first_ts), COALESCE(excluded.first_ts, first_ts)),
          last_ts = MAX(COALESCE(last_ts, excluded.last_ts), COALESCE(excluded.last_ts, last_ts))`,
     ),
-    costState: db.query(
+    costState: db.query<never, [CostStateParams]>(
       `INSERT INTO cost_states (session_id, start_time, ts, model, input, output, thinking, cache_read,
          cache_write, web_search, cost_usd, total_cost_usd, has_unknown_model_cost)
        VALUES ($sessionId, $startTime, $ts, $model, $input, $output, $thinking, $cacheRead,
@@ -137,7 +142,7 @@ export async function ingestFiles(
 
   for (const path of paths) {
     const rel = relative(rootPath, path).split(sep);
-    const project = rel[0] === "projects" && rel.length > 2 ? rel[1] : null;
+    const project = rel[0] === "projects" && rel.length > 2 ? (rel[1] ?? null) : null;
     const agentId = SUBAGENT.exec(path)?.[1] ?? null;
     try {
       if (agentId !== null && !st.agentKnown.get(agentId)) await readAgentMeta(st, path, agentId);
@@ -189,11 +194,11 @@ export async function ingestFiles(
       }
       st.finishFile.run(cur.size, Date.now(), fileId);
     } catch (e) {
-      st.fileError.run((e as Error).message, path); // no-op when the file was never seen
+      st.fileError.run(errorMessage(e), path); // no-op when the file was never seen
       // Deleted between listing and reading: normal cleanup, not an error.
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
         errors++;
-        console.error(`ingest ${path}: ${(e as Error).message}`);
+        console.error(`ingest ${path}: ${errorMessage(e)}`);
       }
     }
   }
@@ -205,6 +210,54 @@ export async function ingestFiles(
 }
 
 type St = ReturnType<typeof statements>;
+
+// Named parameters of the three upserts: a misspelled or missing key is a compile error.
+type Cost = number | null;
+type RequestParams = Usage & {
+  messageId: string;
+  requestId: string;
+  sessionId: string;
+  agentId: string | null;
+  ts: number;
+  model: string;
+  sourceId: number;
+  fileId: number;
+  effort: string | null;
+  isSidechain: 0 | 1;
+  costUsd: Cost;
+  pricePeriodId: string | null;
+  unpriced: 0 | 1;
+  usageRaw: string;
+  costInput: Cost;
+  costOutput: Cost;
+  costCacheRead: Cost;
+  costCacheWrite5m: Cost;
+  costCacheWrite1h: Cost;
+  costWebSearch: Cost;
+};
+type SessionParams = {
+  id: string;
+  sourceId: number;
+  project: string | null;
+  cwd: string | null;
+  entrypoint: string | null;
+  version: string | null;
+  title: string | null;
+  aiTitle: string | null;
+  agentName: string | null;
+  agentColor: string | null;
+  agentSetting: string | null;
+  tag: string | null;
+  hasTag: 0 | 1;
+  ts: number | null;
+};
+type CostStateParams = CostState["models"][number] & {
+  sessionId: string;
+  startTime: number;
+  ts: number;
+  totalCostUsd: number;
+  unknown: 0 | 1;
+};
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -264,7 +317,7 @@ function writeRequest(
       costCacheWrite5m: priced?.parts.cacheWrite5m ?? null,
       costCacheWrite1h: priced?.parts.cacheWrite1h ?? null,
       costWebSearch: priced?.parts.webSearch ?? null,
-    } as never).changes > 0
+    }).changes > 0
   );
 }
 
@@ -292,7 +345,7 @@ function writeSession(
     tag: m?.tag ?? null,
     hasTag: m && "tag" in m ? 1 : 0,
     ts: p.ts,
-  } as never);
+  });
 }
 
 function writeCostState(st: St, p: CostState): boolean {
@@ -312,7 +365,7 @@ function writeCostState(st: St, p: CostState): boolean {
       costUsd: m.costUsd,
       totalCostUsd: p.totalCostUsd,
       unknown: p.hasUnknownModelCost ? 1 : 0,
-    } as never);
+    });
     changed ||= r.changes > 0;
   }
   return changed;

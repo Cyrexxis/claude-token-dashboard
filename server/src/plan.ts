@@ -41,7 +41,7 @@ export function recordSnapshots(db: Database, body: unknown, now: number): PlanS
   const latest = db.query<{ percent_used: number; resets_at: number | null }, [string, string]>(
     "SELECT percent_used, resets_at FROM plan_snapshots WHERE org_id = ? AND kind = ? ORDER BY ts DESC, id DESC LIMIT 1",
   );
-  const insert = db.query(
+  const insert = db.query<never, [number, string, string, number, number | null, number | null]>(
     `INSERT INTO plan_snapshots (ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin)
      VALUES (?, ?, ?, ?, ?, ?, 'mod')`,
   );
