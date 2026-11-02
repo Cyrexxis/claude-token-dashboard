@@ -23,7 +23,7 @@ export function openDatabase(path: string): Database {
     // An older checkout must not lower the marker: the newer build would then re-run its migrations.
     if (current > SCHEMA_VERSION)
       throw new Error(
-        `database schema ${current} is from a newer version (this build knows ${SCHEMA_VERSION}); run "bun run update"`,
+        `database schema ${current} is from a newer version (this build knows ${SCHEMA_VERSION}); update this checkout (git pull), then run "bun run update"`,
       );
     if (current < SCHEMA_VERSION) {
       for (const sql of MIGRATIONS.slice(current)) db.run(sql);

@@ -31,3 +31,14 @@ test("an API error body becomes the HttpError message", async () => {
   expect(e.message).toBe("no such session");
   expect(e.name).toBe("HttpError");
 });
+
+test("a 200 that is not JSON (proxy, other service) is an HttpError, not empty data", async () => {
+  globalThis.fetch = (async () =>
+    new Response("<html></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    })) as never;
+  const e = await api("/x").catch((e: unknown) => e);
+  expect(e).toBeInstanceOf(HttpError);
+  expect((e as HttpError).message).toContain("unexpected response");
+});

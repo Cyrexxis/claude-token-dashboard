@@ -103,3 +103,12 @@ test("a database from a newer schema is refused and left alone", () => {
   );
   after.close();
 });
+
+test("the newer-schema error says to update the checkout first", () => {
+  const path = join(tmp(), "a.db");
+  openDatabase(path).close();
+  const raw = new Database(path);
+  raw.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+  raw.close();
+  expect(() => openDatabase(path)).toThrow(/git pull/);
+});

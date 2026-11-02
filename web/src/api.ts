@@ -8,8 +8,9 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly body: ApiError | null,
+    message?: string,
   ) {
-    super(body?.message ?? `HTTP ${status}`);
+    super(message ?? body?.message ?? `HTTP ${status}`);
   }
 }
 
@@ -34,14 +35,19 @@ export async function api<T>(
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     throw new NetworkError(e instanceof Error ? e.message : String(e));
   }
+  // Every endpoint answers JSON; anything else is a proxy or another service on the port.
+  const unexpected = () =>
+    new HttpError(res.status, null, `unexpected response (not a token-dashboard server?)`);
   let body: unknown = null;
-  if (res.headers.get("content-type")?.includes("json"))
+  const isJson = res.headers.get("content-type")?.includes("json");
+  if (isJson)
     try {
       body = await res.json();
     } catch {
-      throw new HttpError(res.status, null); // a JSON content type with a broken body
+      throw unexpected();
     }
   if (!res.ok) throw new HttpError(res.status, body as ApiError | null);
+  if (!isJson) throw unexpected();
   return body as T;
 }
 

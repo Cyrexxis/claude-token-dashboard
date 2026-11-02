@@ -3,6 +3,7 @@ import type { SessionList } from "@td/shared";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { SessionTable } from "../components/SessionTable";
+import { forFilter } from "../paging";
 import type { ViewProps } from "../types";
 import { SessionDetail } from "./SessionDetail";
 
@@ -18,8 +19,11 @@ export function Sessions({ range, id }: ViewProps & { id?: string }) {
   }, [text]);
   // The page belongs to one filter: a new filter reads page 0 in the same render, so no stale-offset request.
   const filterKey = `${q}|${range.from}|${range.to}`;
-  const [paged, setPaged] = useState({ key: filterKey, page: 0 });
-  const page = paged.key === filterKey ? paged.page : 0;
+  const [stored, setPaged] = useState({ key: filterKey, page: 0 });
+  const paged = forFilter(stored, filterKey);
+  // Store the reset during render, so going back to an earlier filter also starts at page 0.
+  if (paged !== stored) setPaged(paged);
+  const page = paged.page;
   const setPage = (p: number) => setPaged({ key: filterKey, page: p });
 
   const params = { ...range, q: q || undefined, limit: PAGE, offset: page * PAGE };
