@@ -96,7 +96,10 @@ function statements(db: Database) {
        VALUES ($id, $sourceId, $project, $cwd, $entrypoint, $version, $title, $aiTitle,
          $agentName, $agentColor, $agentSetting, $tag, $ts, $ts)
        ON CONFLICT(id) DO UPDATE SET
-         source_id = COALESCE(source_id, excluded.source_id), project = COALESCE(project, excluded.project),
+         source_id = COALESCE(source_id, excluded.source_id),
+         -- A project stored before any cwd is the folder fallback: the first line with a cwd replaces it.
+         project = CASE WHEN cwd IS NULL AND excluded.cwd IS NOT NULL THEN excluded.project
+           ELSE COALESCE(project, excluded.project) END,
          cwd = COALESCE(excluded.cwd, cwd), entrypoint = COALESCE(excluded.entrypoint, entrypoint),
          cc_version = COALESCE(excluded.cc_version, cc_version), title = COALESCE(excluded.title, title),
          ai_title = COALESCE(excluded.ai_title, ai_title), agent_name = COALESCE(excluded.agent_name, agent_name),

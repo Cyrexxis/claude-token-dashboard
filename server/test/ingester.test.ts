@@ -88,6 +88,12 @@ test("multi-line response counted once", async () => {
   });
 });
 
+test("first line without cwd (resumed session) does not pin the folder name as project", async () => {
+  const { db, file, ingest } = setup();
+  await ingest(file("s1.jsonl", [customTitle("s1", "t"), assistant()]));
+  expect(session(db)).toMatchObject({ project: "/home/user/demo", cwd: "/home/user/demo" });
+});
+
 test("resumed session copying lines into a second file → no double count", async () => {
   const { db, file, ingest } = setup();
   const a = file("s1.jsonl", [assistant({ messageId: "m1" }), assistant({ messageId: "m2" })]);
