@@ -17,6 +17,7 @@ import {
   listSources,
   listWindowSessions,
   parseRange,
+  shortNames,
 } from "../src/api/queries";
 import { openDatabase, SCHEMA_VERSION } from "../src/db/database";
 import { loadPrices, syncPrices } from "../src/pricing/load";
@@ -197,20 +198,39 @@ test("top 8 + other; bucket sums equal ungrouped totals", () => {
   });
 });
 
-test("labels: project is the cwd basename, source is kind · host", () => {
+test("shortNames: folder name, parents only where names clash", () => {
+  const n = shortNames(["/a/work/api", "/a/oss/api", "/a/web", "C:\\x\\work\\api", "-enc", ""]);
+  expect(Object.fromEntries(n)).toEqual({
+    "/a/work/api": "a/work/api",
+    "/a/oss/api": "oss/api",
+    "/a/web": "web",
+    "C:\\x\\work\\api": "x/work/api",
+    "-enc": "-enc",
+    "": "",
+  });
+});
+
+test("labels: project is the key's basename, source is kind · host", () => {
   const d = db();
   d.run("insert into sources (id, kind, host, root_path) values (1, 'wsl', 'pc', '/r')");
-  session(d, "s1", "-home-u-demo", "/home/u/old-name", 1);
-  session(d, "s2", "-home-u-demo", "/home/u/demo", 2);
+  session(d, "s1", "/home/u/demo", "/home/u/demo/.claude/worktrees/x", 1);
+  session(d, "s2", "C:\\Users\\u\\win", "C:\\Users\\u\\win", 2);
   session(d, "s3", "-x", null, 3);
   session(d, "s4", null, null, 4);
-  for (const s of ["s1", "s3", "s4"])
+  session(d, "s5", "/home/u/oss/demo", "/home/u/oss/demo", 5);
+  for (const s of ["s1", "s2", "s3", "s4", "s5"])
     insertRequest(d, { session_id: s, ts: at("2026-10-14"), input: 1, source_id: 1 });
   rebuildRollups(d, "all");
   const q = { metric: "requests", bucket: "day", from: "2026-10-14", to: "2026-10-14" } as const;
   const labels = (g: "project" | "source") =>
     Object.fromEntries(getTimeseries(d, { ...q, group: g }).series.map((s) => [s.key, s.label]));
-  expect(labels("project")).toEqual({ "-home-u-demo": "demo", "-x": "-x", "": "(none)" });
+  expect(labels("project")).toEqual({
+    "/home/u/demo": "u/demo",
+    "/home/u/oss/demo": "oss/demo",
+    "C:\\Users\\u\\win": "win",
+    "-x": "-x",
+    "": "(none)",
+  });
   expect(labels("source")).toEqual({ "1": "wsl · pc" });
 });
 
@@ -516,7 +536,7 @@ test("window timeseries: requests land in their slot; type, project and model gr
   const d = db();
   const t0 = at("2026-10-14");
   const M = 60_000;
-  session(d, "s1", "-proj", "/home/u/proj");
+  session(d, "s1", "/home/u/proj", "/home/u/proj");
   insertRequest(d, { session_id: "s1", ts: t0, input: 1, cost_usd: 1, cost_input: 1 });
   insertRequest(d, { session_id: "s1", ts: t0 + 4 * M, output: 2, cost_usd: 2, cost_output: 2 });
   insertRequest(d, { ts: t0 + 5 * M, input: 4 });

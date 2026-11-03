@@ -6,6 +6,7 @@ import { bus } from "../events";
 import { type PriceTable, priceRequest } from "../pricing/engine";
 import { rebuildRollups } from "../rollups";
 import { type Parsed, parseLine, type Usage } from "./parse";
+import { projectKey } from "./project";
 import { planRead, readLines, statFile } from "./reader";
 
 export type Root = {
@@ -333,7 +334,7 @@ function writeSession(
   st.session.run({
     id: p.sessionId,
     sourceId,
-    project,
+    project: projectKey(p.cwd, project),
     cwd: p.cwd,
     entrypoint: p.entrypoint,
     version: p.version,

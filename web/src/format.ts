@@ -66,12 +66,6 @@ export function autoBucket(r: Range): Bucket {
   return "month";
 }
 
-/** Last segment of the working directory (Linux or Windows), else the encoded project folder. */
-export function projectLabel(project: string | null, cwd: string | null): string {
-  const base = cwd?.split(/[\\/]/).filter(Boolean).at(-1);
-  return base ?? project ?? "—";
-}
-
 export function sourceLabel(kind: string | null, entrypoint: string | null): string {
   if (!kind) return "—";
   return entrypoint === "claude-desktop" ? `${kind} · desktop` : kind;

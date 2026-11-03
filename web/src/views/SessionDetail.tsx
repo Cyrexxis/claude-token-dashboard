@@ -16,7 +16,7 @@ import { axisProps, SERIES_VARS, tooltipStyle } from "../chart-theme";
 import { StatTile } from "../components/StatTile";
 import { TimeChart } from "../components/TimeChart";
 import { GroupSelect, MetricToggle } from "../components/Toggle";
-import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
+import { fmtDuration, fmtTokens, fmtUsd, sourceLabel } from "../format";
 import { pickStep, slotStart, stepLabel } from "../session-math";
 
 const hhmm = (b: string) =>
@@ -117,8 +117,7 @@ export function SessionDetail({ id }: { id: string }) {
       <section className="card">
         <h1>{s.title ?? s.id}</h1>
         <p className="muted" style={{ margin: 0 }}>
-          {projectLabel(s.project, s.cwd)} · {s.cwd ?? "no cwd"} ·{" "}
-          {sourceLabel(s.sourceKind, s.entrypoint)}
+          {s.projectLabel ?? "—"} · {s.cwd ?? "no cwd"} · {sourceLabel(s.sourceKind, s.entrypoint)}
           {s.ccVersion && ` · Claude Code ${s.ccVersion}`}
           {s.tag && ` · tag ${s.tag}`}
           {s.firstTs !== null && ` · ${new Date(s.firstTs).toLocaleString()}`}

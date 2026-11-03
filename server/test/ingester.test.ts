@@ -79,7 +79,7 @@ test("multi-line response counted once", async () => {
     cost_cache_read: 0,
   });
   expect(session(db)).toMatchObject({
-    project: "-home-u-proj",
+    project: "/home/user/demo", // no repo there: the cwd
     cwd: "/home/user/demo",
     entrypoint: "cli",
     cc_version: "2.1.309",
@@ -136,7 +136,7 @@ test("subagent file links to parent session with agent_id", async () => {
   expect(one(db, "select agent_id from requests where message_id = 'msg_1'")).toEqual({
     agent_id: null,
   });
-  expect(session(db)).toMatchObject({ agent_name: "Parent name", project: "-home-u-proj" });
+  expect(session(db)).toMatchObject({ agent_name: "Parent name", project: "/home/user/demo" });
 });
 
 test("sub-agent meta file names the agent; a missing one is retried on the next pass", async () => {

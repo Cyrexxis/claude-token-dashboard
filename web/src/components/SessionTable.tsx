@@ -1,6 +1,6 @@
 import { type SessionRow, totalTokens } from "@td/shared";
 import { useState } from "react";
-import { fmtDuration, fmtTokens, fmtUsd, projectLabel, sourceLabel } from "../format";
+import { fmtDuration, fmtTokens, fmtUsd, sourceLabel } from "../format";
 import { COLS, type ColId, duration, sortSessions } from "../session-sort";
 
 const when = (ms: number | null) => (ms === null ? "—" : new Date(ms).toLocaleString());
@@ -72,7 +72,7 @@ export function SessionTable({
                     {s.title ?? s.id.slice(0, 8)}
                   </a>
                 </td>
-                <td>{projectLabel(s.project, s.cwd)}</td>
+                <td>{s.projectLabel ?? "—"}</td>
                 <td>{sourceLabel(s.sourceKind, s.entrypoint)}</td>
                 <td>{s.model ?? "—"}</td>
                 <td>{when(s.lastTs)}</td>

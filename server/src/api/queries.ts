@@ -135,7 +135,31 @@ function bucketList(from: string, to: string, bucket: Bucket): string[] {
   return out;
 }
 
-const basename = (p: string) => p.split(/[\\/]/).filter(Boolean).at(-1) ?? p;
+/** Shortest unique label per key: the last path segment, plus parent folders only where labels would clash. */
+export function shortNames(keys: string[]): Map<string, string> {
+  const parts = keys.map((k) => k.split(/[\\/]/).filter(Boolean));
+  const depth = keys.map(() => 1);
+  const name = (i: number) => parts[i]?.slice(-(depth[i] ?? 1)).join("/") || (keys[i] ?? "");
+  for (let grew = true; grew; ) {
+    grew = false;
+    const count = new Map<string, number>();
+    for (let i = 0; i < keys.length; i++) count.set(name(i), (count.get(name(i)) ?? 0) + 1);
+    for (let i = 0; i < keys.length; i++)
+      if ((count.get(name(i)) ?? 0) > 1 && (depth[i] ?? 1) < (parts[i]?.length ?? 0)) {
+        depth[i] = (depth[i] ?? 1) + 1;
+        grew = true;
+      }
+  }
+  return new Map(keys.map((k, i) => [k, name(i)]));
+}
+
+/** Labels for every known project, so a label is the same on every page. */
+function projectLabels(db: Database): Map<string, string> {
+  const rows = db
+    .query<{ p: string }, []>("SELECT DISTINCT project p FROM sessions WHERE project IS NOT NULL")
+    .all();
+  return shortNames(rows.map((r) => r.p));
+}
 
 function labels(db: Database, group: Exclude<Group, "type">, keys: string[]): Map<string, string> {
   const m = new Map(keys.map((k) => [k, k]));
@@ -149,13 +173,8 @@ function labels(db: Database, group: Exclude<Group, "type">, keys: string[]): Ma
     if (m.has("")) m.set("", "unknown");
   }
   if (group === "project") {
-    const rows = db
-      .query<{ project: string; cwd: string }, []>(
-        "SELECT project, cwd FROM sessions WHERE project IS NOT NULL AND cwd IS NOT NULL ORDER BY last_ts",
-      )
-      .all();
-    for (const s of rows) if (m.has(s.project)) m.set(s.project, basename(s.cwd)); // latest wins
-    if (m.has("")) m.set("", "(none)");
+    const names = projectLabels(db);
+    for (const k of m.keys()) m.set(k, k ? (names.get(k) ?? k) : "(none)");
   }
   if (group === "agent") {
     const rows = db
@@ -384,10 +403,12 @@ function withTotals(
     .all(...args);
   const byId = new Map(aggs.map((a) => [a.sessionId, a]));
   const model = new Map(models.map((m) => [m.sessionId, m.model])); // most output wins (last)
+  const names = projectLabels(db);
   return records.map(({ ccVersion, tag, agentName, ...r }) => {
     const a = byId.get(r.id);
     return {
       ...r,
+      projectLabel: r.project && (names.get(r.project) ?? r.project),
       model: model.get(r.id) ?? null,
       requests: a?.requests ?? 0,
       tokens: {

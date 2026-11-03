@@ -84,6 +84,8 @@ export type SessionRow = {
   id: string;
   title: string | null;
   project: string | null;
+  /** Folder name of the project, with parent folders added only to tell same-named projects apart. */
+  projectLabel: string | null;
   cwd: string | null;
   sourceKind: SourceKind | null;
   entrypoint: string | null;

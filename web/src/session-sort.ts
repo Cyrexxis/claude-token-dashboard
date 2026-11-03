@@ -1,5 +1,5 @@
 import { type SessionRow, totalTokens } from "@td/shared";
-import { projectLabel, sourceLabel } from "./format";
+import { sourceLabel } from "./format";
 
 export type ColId =
   | "title"
@@ -23,7 +23,7 @@ export const duration = (s: SessionRow) =>
 
 export const COLS: Col[] = [
   { id: "title", label: "Title", align: "text", key: (s) => s.title ?? s.id },
-  { id: "project", label: "Project", align: "text", key: (s) => projectLabel(s.project, s.cwd) },
+  { id: "project", label: "Project", align: "text", key: (s) => s.projectLabel ?? "—" },
   {
     id: "source",
     label: "Source",

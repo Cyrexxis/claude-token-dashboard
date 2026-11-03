@@ -5,7 +5,6 @@ import {
   fmtTokens,
   fmtUsd,
   presetRange,
-  projectLabel,
   sourceLabel,
 } from "../src/format";
 import { parseHash } from "../src/route";
@@ -53,11 +52,7 @@ test("parseHash survives a malformed escape", () => {
   expect(parseHash("#/sessions/a%2Fb")).toEqual({ view: "sessions", id: "a/b" });
 });
 
-test("projectLabel and sourceLabel", () => {
-  expect(projectLabel("-home-u-demo", "/home/u/demo")).toBe("demo");
-  expect(projectLabel("-x", "C:\\Users\\u\\win-proj")).toBe("win-proj");
-  expect(projectLabel("-home-u-demo", null)).toBe("-home-u-demo");
-  expect(projectLabel(null, null)).toBe("—");
+test("sourceLabel", () => {
   expect(sourceLabel("wsl", "claude-desktop")).toBe("wsl · desktop");
   expect(sourceLabel("windows", "cli")).toBe("windows");
   expect(sourceLabel(null, null)).toBe("—");

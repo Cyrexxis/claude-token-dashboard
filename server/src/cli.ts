@@ -6,6 +6,7 @@ import { type Config, loadConfig } from "./config";
 import { writeConnectionFile } from "./connection";
 import { openDatabase } from "./db/database";
 import { discoverRoots } from "./ingest/discovery";
+import { ensureProjectKeys } from "./ingest/project";
 import { type InstallDeps, setup, uninstall, update } from "./install";
 import { detectPlatform } from "./platform";
 import { loadPrices, syncPrices } from "./pricing/load";
@@ -25,6 +26,7 @@ async function prepare() {
   if (prices.localError) console.error(`local prices ignored: ${prices.localError}`);
   syncPrices(db, prices);
   ensureRollupTimezone(db);
+  ensureProjectKeys(db);
   return { config, db, table: prices.table };
 }
 
