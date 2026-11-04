@@ -1,4 +1,4 @@
-import type { Bucket } from "@td/shared";
+import { type Bucket, localDay } from "@td/shared";
 
 export function fmtTokens(n: number): string {
   const units: [number, string][] = [
@@ -20,16 +20,14 @@ export function fmtUsd(n: number | null): string {
 
 export function fmtDuration(ms: number): string {
   const s = Math.round(ms / 1000);
-  const h = Math.floor(s / 3600);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
   if (h) return `${h}h ${m}m`;
   if (m) return `${m}m ${s % 60}s`;
   return `${s}s`;
 }
-
-const pad = (n: number) => String(n).padStart(2, "0");
-export const localDay = (d: Date) =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 export type Range = { from: string | null; to: string | null };
 export type RangePreset = "7d" | "30d" | "90d" | "1y" | "all";

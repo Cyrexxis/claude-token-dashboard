@@ -3,6 +3,7 @@ import {
   type Bucket,
   type Group,
   type IngestState,
+  localDay,
   type Metric,
   PROTOCOL,
   type PriceRow,
@@ -28,8 +29,6 @@ export type Range = { from: string | null; to: string | null };
 
 export class BadRequest extends Error {}
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const toDate = (day: string) => {
   const [y = 0, m = 1, d = 1] = day.split("-").map(Number);
   return new Date(y, m - 1, d);

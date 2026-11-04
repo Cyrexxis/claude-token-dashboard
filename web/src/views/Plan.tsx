@@ -1,6 +1,7 @@
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import {
   type Group,
+  localDay,
   type PlanSnapshots,
   type PlanWindow,
   type PlanWindows,
@@ -27,7 +28,7 @@ import { ChartCard } from "../components/ChartCard";
 import { SessionTable } from "../components/SessionTable";
 import { TimeChart } from "../components/TimeChart";
 import { GroupSelect, MetricToggle } from "../components/Toggle";
-import { fmtDuration, fmtTokens, fmtUsd, localDay } from "../format";
+import { fmtDuration, fmtTokens, fmtUsd } from "../format";
 import {
   findWindow,
   fiveHourByWeek,

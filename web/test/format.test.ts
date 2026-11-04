@@ -28,6 +28,9 @@ test("fmtDuration", () => {
   expect(fmtDuration(59_000)).toBe("59s");
   expect(fmtDuration(3_660_000)).toBe("1h 1m");
   expect(fmtDuration(125_000)).toBe("2m 5s");
+  expect(fmtDuration((124 * 60 + 54) * 60_000)).toBe("5d 4h");
+  expect(fmtDuration(24 * 3_600_000)).toBe("1d 0h");
+  expect(fmtDuration(24 * 3_600_000 - 60_000)).toBe("23h 59m");
 });
 
 test("presetRange and autoBucket", () => {

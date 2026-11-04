@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Prices, SourceRow, Status as StatusData } from "@td/shared";
+import { localDay, type Prices, type SourceRow, type Status as StatusData } from "@td/shared";
 import { useState } from "react";
 import { api, HttpError } from "../api";
-import { localDay } from "../format";
 
 // Exact rates: $0.125/MTok must not round to $0.13.
 const rate = (n: number) => `$${n}`;
