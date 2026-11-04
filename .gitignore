@@ -6,3 +6,5 @@ docs/superpowers/plans/
 docs/superpowers/specs/
 web/dist/
 plugin/.claude-plugin/types/
+test-results/
+playwright-report/

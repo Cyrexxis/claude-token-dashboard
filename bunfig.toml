@@ -1,3 +1,3 @@
 [test]
-# plugin/ tests run inside the engine: bun run test:mod
-pathIgnorePatterns = ["plugin/**"]
+# plugin/ tests run inside the engine: bun run test:mod; e2e/ runs under Playwright: bun run test:e2e
+pathIgnorePatterns = ["plugin/**", "e2e/**"]
