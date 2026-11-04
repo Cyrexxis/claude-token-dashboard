@@ -23,8 +23,8 @@ test("stores each window", () => {
     NOW,
   );
   expect(out).toEqual([
-    { ts: NOW, kind: "five_hour", percentUsed: 12.5, resetsAt: Date.parse(RESET) },
-    { ts: NOW, kind: "seven_day", percentUsed: 40, resetsAt: null },
+    { ts: NOW, seenTs: NOW, kind: "five_hour", percentUsed: 12.5, resetsAt: Date.parse(RESET) },
+    { ts: NOW, seenTs: NOW, kind: "seven_day", percentUsed: 40, resetsAt: null },
   ]);
   expect(rows(db)).toMatchObject([
     {
@@ -40,12 +40,16 @@ test("stores each window", () => {
   ]);
 });
 
-test("two sessions, same reading → one row", () => {
+test("two sessions, same reading → one row, confirmed at the later reading", () => {
   const db = openDatabase(":memory:");
   const body = { windows: [{ kind: "five_hour", percentUsed: 12.5, resetsAt: RESET }] };
   expect(recordSnapshots(db, body, NOW)).toHaveLength(1);
   expect(recordSnapshots(db, { ...body, sessionCostUsd: 9 }, NOW + 1000)).toEqual([]);
-  expect(rows(db)).toHaveLength(1);
+  expect(rows(db)).toMatchObject([{ ts: NOW, seen_ts: NOW + 1000 }]);
+  expect(getPlanSnapshots(db, NONE).points).toMatchObject([{ ts: NOW, seenTs: NOW + 1000 }]);
+  // A row from before the range counts when it was confirmed inside it.
+  recordSnapshots(db, body, Date.parse("2026-10-17T12:00:00Z"));
+  expect(getPlanSnapshots(db, { from: "2026-10-16", to: null }).points).toHaveLength(1);
 });
 
 test("changed percent or reset → new row", () => {
@@ -277,18 +281,21 @@ test("range filters past windows and points; current ignores the range", () => {
   expect(getPlanSnapshots(db, NONE).points).toEqual([
     {
       ts: at("2026-10-10T13:00:00Z"),
+      seenTs: at("2026-10-10T13:00:00Z"),
       kind: "five_hour",
       percentUsed: 10,
       resetsAt: at("2026-10-10T17:00:00Z"),
     },
     {
       ts: at("2026-10-15T13:00:00Z"),
+      seenTs: at("2026-10-15T13:00:00Z"),
       kind: "five_hour",
       percentUsed: 20,
       resetsAt: at("2026-10-15T17:00:00Z"),
     },
     {
       ts: at("2026-10-20T13:00:00Z"),
+      seenTs: at("2026-10-20T13:00:00Z"),
       kind: "five_hour",
       percentUsed: 30,
       resetsAt: at("2026-10-20T17:00:00Z"),

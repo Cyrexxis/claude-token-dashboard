@@ -43,7 +43,13 @@ test("malformed usage payload does not throw", () => {
 
 test("plan.snapshot invalidates plan only", () => {
   expect(
-    keysToInvalidate("plan.snapshot", { ts: 1, kind: "five_hour", percentUsed: 3, resetsAt: 2 }),
+    keysToInvalidate("plan.snapshot", {
+      ts: 1,
+      seenTs: 1,
+      kind: "five_hour",
+      percentUsed: 3,
+      resetsAt: 2,
+    }),
   ).toEqual([["plan"]]);
 });
 

@@ -5,9 +5,10 @@ import { SERVER_VERSION } from "../version";
 import m0001 from "./migrations/0001_init.sql" with { type: "text" };
 import m0002 from "./migrations/0002_cost_by_type.sql" with { type: "text" };
 import m0003 from "./migrations/0003_agents.sql" with { type: "text" };
+import m0004 from "./migrations/0004_plan_seen.sql" with { type: "text" };
 
 // Imported as text so the SQL is embedded in the compiled program. Append new migrations; never edit old ones.
-const MIGRATIONS = [m0001, m0002, m0003];
+const MIGRATIONS = [m0001, m0002, m0003, m0004];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
 export function openDatabase(path: string): Database {

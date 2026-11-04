@@ -188,6 +188,8 @@ export type PlanSnapshotBody = { windows: PlanWindowReading[]; sessionCostUsd?: 
 export type IngestTriggerBody = { sessionId: string };
 export type PlanSnapshotPoint = {
   ts: number;
+  /** When this value was last confirmed unchanged (readings are stored only on change); >= ts. */
+  seenTs: number;
   kind: string;
   percentUsed: number;
   resetsAt: number | null;

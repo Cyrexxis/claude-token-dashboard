@@ -8,7 +8,8 @@ export const findWindow = (all: PlanWindow[], id: WindowId | null): PlanWindow |
 
 /**
  * One row per reading time from `start` on, each kind holding its latest value so far in its
- * current window. Readings are stored only when a value changes, so carrying it forward is exact.
+ * current window. Readings are stored only when a value changes, so carrying it forward is exact;
+ * `seenTs` adds a row where a value was last confirmed unchanged.
  * Rows end at the last reading of any kind, so a mod that stopped reporting shows as a gap,
  * and never run past `end`: the weekly line of a past 5-hour window would stretch the axis.
  */
@@ -21,8 +22,11 @@ export function mergeReadings(
   const resets = new Map(current.map((w) => [w.kind, w.resetsAt]));
   const own = points.filter((p) => resets.get(p.kind) === p.resetsAt).sort((a, b) => a.ts - b.ts);
   const times = [
-    ...new Set([start, ...own.filter((p) => p.ts > start && p.ts <= end).map((p) => p.ts)]),
-  ];
+    ...new Set([
+      start,
+      ...own.flatMap((p) => [p.ts, p.seenTs]).filter((t) => t > start && t <= end),
+    ]),
+  ].sort((a, b) => a - b);
   const last: Record<string, number> = {};
   let i = 0;
   return times.map((ts) => {

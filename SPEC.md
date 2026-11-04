@@ -144,7 +144,7 @@ Each request gets a `source`:
 
 - The mod sends a snapshot on every `session.measure` event (fires after each main-thread turn and whenever a window moves by a whole percentage point): `{kind, percentUsed, resetsAt}` per window, plus the session's cost. Kinds: `five_hour`, `seven_day`, and a gateway's `spend_limit` (phase 3: no per-model windows exist). `resetsAt` is stored rounded to the minute.
 - Single account (decided in phase 3): every snapshot has `org_id = 'default'`. `$.session.identity()` answers only mods installed via managed settings, so it is not used; the column keeps room for several accounts later.
-- Several sessions report the same account-wide numbers; the server stores a snapshot only when a value changed. A window is identified by `(org, kind, resetsAt)`.
+- Several sessions report the same account-wide numbers; the server stores a snapshot only when a value changed; an unchanged reading only moves the latest snapshot's `seen_ts`, so the timeline draws a held value up to the last reading. A window is identified by `(org, kind, resetsAt)`.
 - Optional: import `plan-usage-history.json` from the desktop app (read-only, best effort, format undocumented).
 - **Per 1 % (phase 3):** per window, API-equivalent cost and tokens from the window's start up to the reading that set its peak, divided by the peak %. Computed at read time from `requests` (`plan_windows` stays unused). Labelled "Claude Code only": plan percentages include chat and Cowork, so the figure reads low on days with chat use. Windows under 5 % are shown faded.
 
@@ -240,7 +240,7 @@ price_periods      id, model_id, effective_from, effective_to, origin (shipped|l
 cost_states        session_id, start_time, ts, model, input, output, thinking, cache_read,
                    cache_write, web_search, cost_usd, total_cost_usd, has_unknown_model_cost
                    PRIMARY KEY(session_id, start_time, model)
-plan_snapshots     id, ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin (mod|desktop)
+plan_snapshots     id, ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin (mod|desktop), seen_ts
 plan_windows       org_id, kind, resets_at, peak_percent, tokens_in_window, cost_in_window
 daily_rollups      day, source_id, model, project, token columns…, cost_usd, request_count, cost_<type> columns…
 live_usage         session_id, turn_id, step_index, ts, model, 4 token counts   (temporary, dropped after ingest)

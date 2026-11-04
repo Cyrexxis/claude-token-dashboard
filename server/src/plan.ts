@@ -35,11 +35,20 @@ function parseBody(body: unknown): { windows: Reading[]; sessionCostUsd: number 
   return { windows, sessionCostUsd: (c as number | undefined) ?? null };
 }
 
-/** Stores readings whose value differs from the latest stored one for the kind; returns those stored. */
+/**
+ * Stores readings whose value differs from the latest stored one for the kind; returns those stored.
+ * An unchanged reading only moves the latest row's seen_ts, so the chart can draw the value up to it.
+ */
 export function recordSnapshots(db: Database, body: unknown, now: number): PlanSnapshotPoint[] {
   const { windows, sessionCostUsd } = parseBody(body);
-  const latest = db.query<{ percent_used: number; resets_at: number | null }, [string, string]>(
-    "SELECT percent_used, resets_at FROM plan_snapshots WHERE org_id = ? AND kind = ? ORDER BY ts DESC, id DESC LIMIT 1",
+  const latest = db.query<
+    { id: number; percent_used: number; resets_at: number | null },
+    [string, string]
+  >(
+    "SELECT id, percent_used, resets_at FROM plan_snapshots WHERE org_id = ? AND kind = ? ORDER BY ts DESC, id DESC LIMIT 1",
+  );
+  const seen = db.query<never, [number, number]>(
+    "UPDATE plan_snapshots SET seen_ts = ? WHERE id = ?",
   );
   const insert = db.query<never, [number, string, string, number, number | null, number | null]>(
     `INSERT INTO plan_snapshots (ts, org_id, kind, percent_used, resets_at, session_cost_usd, origin)
@@ -49,9 +58,12 @@ export function recordSnapshots(db: Database, body: unknown, now: number): PlanS
     const stored: PlanSnapshotPoint[] = [];
     for (const w of windows) {
       const prev = latest.get(ORG, w.kind);
-      if (prev && prev.percent_used === w.percentUsed && prev.resets_at === w.resetsAt) continue;
+      if (prev && prev.percent_used === w.percentUsed && prev.resets_at === w.resetsAt) {
+        seen.run(now, prev.id);
+        continue;
+      }
       insert.run(now, ORG, w.kind, w.percentUsed, w.resetsAt, sessionCostUsd);
-      stored.push({ ts: now, ...w });
+      stored.push({ ts: now, seenTs: now, ...w });
     }
     return stored;
   })();
@@ -156,8 +168,11 @@ export function getPlanSnapshots(db: Database, r: Range): PlanSnapshots {
   const { fromMs, toMs } = dayBoundsMs(r);
   const points = db
     .query<PlanSnapshotPoint, [string, number | null, number | null]>(
-      `SELECT ts, kind, percent_used percentUsed, resets_at resetsAt FROM plan_snapshots
-       WHERE org_id = ?1 AND (?2 IS NULL OR ts >= ?2) AND (?3 IS NULL OR ts < ?3) ORDER BY ts, id`,
+      // A row from before the range still counts when it was confirmed inside it.
+      `SELECT ts, COALESCE(seen_ts, ts) seenTs, kind, percent_used percentUsed, resets_at resetsAt
+       FROM plan_snapshots
+       WHERE org_id = ?1 AND (?2 IS NULL OR COALESCE(seen_ts, ts) >= ?2) AND (?3 IS NULL OR ts < ?3)
+       ORDER BY ts, id`,
     )
     .all(ORG, fromMs, toMs);
   return { points };

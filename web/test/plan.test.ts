@@ -10,8 +10,9 @@ import {
 } from "../src/plan-math";
 
 const H = 3_600_000;
-const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number) => ({
+const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number, seenTs = ts) => ({
   ts,
+  seenTs,
   kind,
   percentUsed,
   resetsAt,
@@ -42,6 +43,30 @@ test("mergeReadings: shared rows, values carried forward, other windows ignored,
     { ts: 12 * H, seven_day: 7, five_hour: 10 },
     { ts: 13 * H, seven_day: 7, five_hour: 20 },
   ]); // ends at the last reading, not at now
+});
+
+test("mergeReadings: a value confirmed unchanged draws on to its last confirmation, capped at the end", () => {
+  const cur = [
+    { kind: "five_hour", resetsAt: 15 * H },
+    { kind: "seven_day", resetsAt: 100 * H },
+  ];
+  const rows = mergeReadings(
+    [
+      pt(9 * H, "seven_day", 5, 100 * H, 14 * H),
+      pt(11 * H, "five_hour", 10, 15 * H, 12 * H),
+      pt(13 * H, "five_hour", 20, 15 * H, 16 * H), // confirmed after the window: capped
+    ],
+    cur,
+    10 * H,
+    15 * H,
+  );
+  expect(rows).toEqual([
+    { ts: 10 * H, seven_day: 5 },
+    { ts: 11 * H, seven_day: 5, five_hour: 10 },
+    { ts: 12 * H, seven_day: 5, five_hour: 10 },
+    { ts: 13 * H, seven_day: 5, five_hour: 20 },
+    { ts: 14 * H, seven_day: 5, five_hour: 20 },
+  ]);
 });
 
 test("windowTicks: whole hours for 5 hours, local midnights for a week", () => {
