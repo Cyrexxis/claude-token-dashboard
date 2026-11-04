@@ -264,6 +264,7 @@ function WindowSeries({
   });
   return (
     <ChartCard
+      id="plan-series"
       title={`${metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the ${picked ? "selected" : "current"} window`}
       controls={
         <>
@@ -595,6 +596,7 @@ export function Plan({ range }: ViewProps) {
         </div>
       )}
       <ChartCard
+        id="plan-usage"
         title={`Plan usage in the ${picked ? "selected" : "current"} window`}
         controls={!picked && <WindowTabs kind={kind} onChange={setKind} />}
       >

@@ -33,6 +33,7 @@ export function SeriesView({
   });
   return (
     <ChartCard
+      id={`series-${metric}`}
       title={title}
       controls={
         <>

@@ -53,6 +53,7 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
   const multiDay = new Date(first).toDateString() !== new Date(last).toDateString();
   return (
     <ChartCard
+      id="session-series"
       title={`${metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session`}
       controls={
         <>
@@ -156,7 +157,7 @@ export function SessionDetail({ id }: { id: string }) {
         )}
       </div>
       {context.length > 1 && (
-        <ChartCard title="Context window of the main agent per request">
+        <ChartCard id="session-context" title="Context window of the main agent per request">
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={context}>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
