@@ -88,3 +88,31 @@ test("plan: 5-hour/weekly switch lives in the sticky header and follows the pick
   await header.getByRole("link", { name: "Overview" }).click();
   await expect(header.getByLabel("Period")).toBeVisible();
 });
+
+test("a new view opens at the top; back and forward keep their scroll position", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  const header = page.locator("header");
+  const sessions = page.getByRole("heading", { name: "Sessions", exact: true });
+  // Load Sessions once: from the cache it renders full height at once, so the browser keeps the
+  // old scroll position (a first, uncached visit is short and drops to 0 on its own).
+  await page.goto("/#/sessions");
+  await expect(page.locator("main table tbody tr").first()).toBeVisible();
+  await header.getByRole("link", { name: "Overview" }).click();
+  // Every chart loaded, so the page is full height before scrolling.
+  await page.waitForLoadState("networkidle");
+  await page.mouse.wheel(0, 1500);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(500);
+  const scrolled = await page.evaluate(() => scrollY);
+  await header.getByRole("link", { name: "Sessions" }).click();
+  await expect(sessions).toBeVisible();
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+  // Back returns to where Overview was left, forward to the top of Sessions again.
+  await page.goBack();
+  await expect(page.locator(".recharts-surface").first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(scrolled);
+  await page.goForward();
+  await expect(sessions).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+});
