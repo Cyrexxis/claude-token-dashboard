@@ -1,7 +1,6 @@
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import {
   type Group,
-  isTimedPlanKind,
   type PlanSnapshots,
   type PlanWindow,
   type PlanWindows,
@@ -32,6 +31,7 @@ import { fmtDuration, fmtTokens, fmtUsd, localDay } from "../format";
 import {
   findWindow,
   fiveHourByWeek,
+  flipWindow,
   mergeReadings,
   overlappingWeekly,
   type WindowId,
@@ -39,7 +39,6 @@ import {
   weeklyByQuarter,
   windowTicks,
 } from "../plan-math";
-import type { ViewProps } from "../types";
 
 const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "Weekly" };
 const kindLabel = (kind: string) => KIND_LABEL[kind] ?? kind;
@@ -70,10 +69,12 @@ function useNow(): number {
   return now;
 }
 
-function usePlanWindows(range: ViewProps["range"]) {
+// The Windows card pages through all of history, so the header's period doesn't apply here.
+const ALL_TIME = { from: null, to: null };
+function usePlanWindows() {
   return useQuery({
-    queryKey: ["plan", "windows", range],
-    queryFn: ({ signal }) => api<PlanWindows>("/plan/windows", range, { signal }),
+    queryKey: ["plan", "windows", ALL_TIME],
+    queryFn: ({ signal }) => api<PlanWindows>("/plan/windows", ALL_TIME, { signal }),
   });
 }
 
@@ -100,10 +101,10 @@ function WindowCard({ w }: { w: PlanWindow }) {
   );
 }
 
-type Kind = TimedPlanKind;
+export type Kind = TimedPlanKind;
 const KINDS = TIMED_PLAN_KINDS;
 
-function WindowTabs({ kind, onChange }: { kind: Kind; onChange: (k: Kind) => void }) {
+export function WindowTabs({ kind, onChange }: { kind: Kind; onChange: (k: Kind) => void }) {
   return (
     <div className="tabs">
       {KINDS.map((k) => (
@@ -121,6 +122,8 @@ function useWindowPoints(w: PlanWindow) {
   return useQuery({
     queryKey: ["plan", "snapshots", range],
     queryFn: ({ signal }) => api<PlanSnapshots>("/plan/snapshots", range, { signal }),
+    // Keeps the old chart's height while the next window loads, so the page doesn't jump.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -214,6 +217,7 @@ function WindowSessions({ w }: { w: PlanWindow }) {
   const list = useQuery({
     queryKey: ["plan", "sessions", params],
     queryFn: ({ signal }) => api<SessionList>("/plan/sessions", params, { signal }),
+    placeholderData: keepPreviousData,
   });
   if (list.error) return <p className="error">{list.error.message}</p>;
   if (!list.data) return <p className="muted">Loading…</p>;
@@ -237,15 +241,12 @@ const slotLabel = (kind: Kind) => (b: string) =>
 function WindowSeries({
   current,
   picked,
-  tabKind,
-  setKind,
+  kind,
 }: {
   current: PlanWindow[];
   picked: PlanWindow | null;
-  tabKind: Kind;
-  setKind: (k: Kind) => void;
+  kind: Kind;
 }) {
-  const kind = picked && isTimedPlanKind(picked.kind) ? picked.kind : tabKind;
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const [group, setGroup] = useState<Group>("type");
   const w = picked ?? current.find((c) => c.kind === kind && c.startMs !== null);
@@ -261,6 +262,7 @@ function WindowSeries({
     queryFn: params
       ? ({ signal }) => api<Timeseries>("/plan/timeseries", params, { signal })
       : skipToken,
+    placeholderData: keepPreviousData,
   });
   return (
     <ChartCard
@@ -270,7 +272,6 @@ function WindowSeries({
         <>
           <MetricToggle value={metric} onChange={setMetric} />
           <GroupSelect value={group} groups={GROUPS} onChange={setGroup} />
-          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
         </>
       }
     >
@@ -406,13 +407,11 @@ function WindowStrip({
 /** Windows of one kind, a page at a time; the table and the strip share a hover highlight. */
 function WindowsCard({
   kind,
-  setKind,
   all,
   isPicked,
   onPick,
 }: {
   kind: Kind;
-  setKind: (k: Kind) => void;
   all: PlanWindow[];
   isPicked: (w: PlanWindow) => boolean;
   onPick: (w: PlanWindow) => void;
@@ -422,16 +421,20 @@ function WindowsCard({
   // The window under the pointer, by resetsAt; local so hovering doesn't re-render the charts.
   const [hovered, setHovered] = useState<number | null>(null);
   const listed = all.filter((w) => w.kind === kind && w.startMs !== null);
-  // 5-hour windows page by week, weekly windows by quarter; newest first, opening on the current page.
+  // 5-hour windows page by week, weekly windows by quarter; newest first, opening on the page
+  // holding the shown window (the current row stands for "no pick"), else the current page.
   const pages = kind === "five_hour" ? fiveHourByWeek(all) : weeklyByQuarter(all, Date.now());
   const found = pages.findIndex((p) => p.fromMs === pageId);
+  const shown = pages.findIndex((p) => p.windows.some(isPicked));
   const pageIdx =
     found >= 0
       ? found
-      : Math.max(
-          pages.findIndex((p) => p.current),
-          0,
-        );
+      : shown >= 0
+        ? shown
+        : Math.max(
+            pages.findIndex((p) => p.current),
+            0,
+          );
   const page = pages[pageIdx];
   const rows = page ? page.windows : listed;
   const unit = kind === "five_hour" ? "week" : "quarter";
@@ -441,10 +444,7 @@ function WindowsCard({
   };
   return (
     <section className="card">
-      <div className="toolbar">
-        <h2 className="card-title">Windows</h2>
-        <WindowTabs kind={kind} onChange={setKind} />
-      </div>
+      <h2>Windows</h2>
       {rows.length ? (
         <div className="table-wrap">
           <table>
@@ -545,15 +545,17 @@ function WindowsCard({
   );
 }
 
-export function Plan({ range }: ViewProps) {
-  const windows = usePlanWindows(range);
-  // One 5-hour/weekly choice drives every tab group on the page.
-  const [kind, setKind] = useState<Kind>("five_hour");
+export function Plan({ kind }: { kind: Kind }) {
+  const windows = usePlanWindows();
   // The pick is an identity: the shown window always comes from the latest fetch.
   const [pickedId, setPickedId] = useState<WindowId | null>(null);
+  // The kind the pick belongs to, and the 5-hour window shown last, to follow a header flip.
+  const [shownKind, setShownKind] = useState(kind);
+  const [last5h, setLast5h] = useState<WindowId | null>(null);
   if (windows.error) return <p className="error">{windows.error.message}</p>;
   if (!windows.data) return <p className="muted">Loading…</p>;
   const { current, past } = windows.data;
+  const all = [...current, ...past];
   const picked = findWindow(past, pickedId);
   if (!current.length && !past.length)
     return (
@@ -563,12 +565,16 @@ export function Plan({ range }: ViewProps) {
       </p>
     );
   const win = (k: Kind) => current.find((w) => w.kind === k && w.startMs !== null);
+  if (shownKind !== kind) {
+    // The header flipped 5-hour/weekly: move to the matching window rather than drop the pick.
+    const from = picked ?? win(shownKind);
+    if (from?.kind === "five_hour") setLast5h({ kind: from.kind, resetsAt: from.resetsAt });
+    setPickedId(flipWindow(from, all, last5h));
+    setShownKind(kind);
+  }
   const chartWin = picked ?? win(kind);
   // A picked window brings its own readings; a 5-hour one also shows the weekly window it overlaps.
-  const chartCurrent = picked
-    ? [picked, ...overlappingWeekly(picked, [...current, ...past]).slice(0, 1)]
-    : current;
-  const tableWin = picked ?? win(kind);
+  const chartCurrent = picked ? [picked, ...overlappingWeekly(picked, all).slice(0, 1)] : current;
   // The current row stands for "no pick": choosing it goes back to the current view.
   const isPicked = (w: PlanWindow) =>
     w.current ? picked === null : picked?.kind === w.kind && picked.resetsAt === w.resetsAt;
@@ -598,25 +604,16 @@ export function Plan({ range }: ViewProps) {
       <ChartCard
         id="plan-usage"
         title={`Plan usage in the ${picked ? "selected" : "current"} window`}
-        controls={!picked && <WindowTabs kind={kind} onChange={setKind} />}
       >
         {chartWin ? <Timeline w={chartWin} current={chartCurrent} /> : none(kind)}
       </ChartCard>
-      <WindowSeries current={current} picked={picked} tabKind={kind} setKind={setKind} />
+      <WindowSeries current={current} picked={picked} kind={kind} />
+      {/* Keyed by kind so a flip opens on the page holding the shown window. */}
+      <WindowsCard key={kind} kind={kind} all={all} isPicked={isPicked} onPick={pick} />
       <section className="card">
-        <div className="toolbar">
-          <h2 className="card-title">Sessions in the {picked ? "selected" : "current"} window</h2>
-          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
-        </div>
-        {tableWin ? <WindowSessions w={tableWin} /> : none(kind)}
+        <h2>Sessions in the {picked ? "selected" : "current"} window</h2>
+        {chartWin ? <WindowSessions w={chartWin} /> : none(kind)}
       </section>
-      <WindowsCard
-        kind={kind}
-        setKind={setKind}
-        all={[...current, ...past]}
-        isPicked={isPicked}
-        onPick={pick}
-      />
     </>
   );
 }

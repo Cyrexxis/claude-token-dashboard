@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   findWindow,
   fiveHourByWeek,
+  flipWindow,
   mergeReadings,
   overlappingWeekly,
   weeklyByQuarter,
@@ -61,6 +62,26 @@ test("overlappingWeekly: weekly windows that overlap a 5-hour window; none for a
   const straddle = win("seven_day", 12 * H, 180 * H);
   expect(overlappingWeekly(five, [five, inside, before, straddle])).toEqual([inside, straddle]);
   expect(overlappingWeekly(inside, [five, inside])).toEqual([]);
+});
+
+test("flipWindow: 5-hour to its week, week to the remembered or last 5-hour window; current is null", () => {
+  const win = (kind: string, startMs: number, resetsAt: number, current = false) =>
+    ({ kind, startMs, resetsAt, current }) as Parameters<typeof flipWindow>[1][number];
+  const oldWeek = win("seven_day", 0, 168 * H);
+  const nowWeek = win("seven_day", 168 * H, 336 * H, true);
+  const a = win("five_hour", 10 * H, 15 * H);
+  const b = win("five_hour", 20 * H, 25 * H);
+  const c = win("five_hour", 200 * H, 205 * H);
+  const live = win("five_hour", 210 * H, 215 * H, true);
+  const all = [oldWeek, nowWeek, a, b, c, live];
+  const id = (w: { kind: string; resetsAt: number }) => ({ kind: w.kind, resetsAt: w.resetsAt });
+  expect(flipWindow(a, all, null)).toEqual(id(oldWeek));
+  expect(flipWindow(c, all, null)).toBeNull(); // its week is the current one
+  expect(flipWindow(oldWeek, all, id(a))).toEqual(id(a));
+  expect(flipWindow(oldWeek, all, id(c))).toEqual(id(b)); // remembered is in another week
+  expect(flipWindow(nowWeek, all, id(c))).toEqual(id(c));
+  expect(flipWindow(nowWeek, all, null)).toBeNull(); // last one is the live window
+  expect(flipWindow(undefined, all, null)).toBeNull();
 });
 
 test("findWindow: looks a picked window up by identity; null when gone or unpicked", () => {

@@ -37,3 +37,54 @@ test("widen button stretches a chart card to 95 % of the viewport, remembers it,
   await card.getByRole("button", { name: "Narrow chart" }).click();
   await expect.poll(width).toBeCloseTo(before, -1);
 });
+
+test("plan: 5-hour/weekly switch lives in the sticky header and follows the picked window", async ({
+  page,
+  request,
+}) => {
+  const H = 3_600_000;
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  // Oldest first, so the current windows are the latest readings.
+  for (const [kind, resetsAt] of [
+    ["seven_day", now - 4 * 24 * H],
+    ["five_hour", now - 6 * 24 * H],
+    ["five_hour", now - 24 * H],
+    ["seven_day", now + 3 * 24 * H],
+    ["five_hour", now + 2 * H],
+  ] as const) {
+    const r = await request.post("/api/v1/plan-snapshots", {
+      data: { windows: [{ kind, percentUsed: 10, resetsAt: iso(resetsAt) }] },
+    });
+    expect(r.ok()).toBe(true);
+  }
+  await page.goto("/#/plan");
+  const header = page.locator("header");
+  await expect(header.getByRole("button", { name: "5-hour" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(header.getByLabel("Period")).toHaveCount(0);
+  await expect(page.locator("main .tabs", { hasText: "Weekly" })).toHaveCount(0);
+
+  // Pick the 5-hour window of last week, then flip: its week, then back to it.
+  const windows = page.locator("section.card", {
+    has: page.getByRole("heading", { name: "Windows" }),
+  });
+  await windows.getByRole("button", { name: "← Older week" }).click();
+  await windows.locator("button.row-pick").first().click();
+  const banner = page.locator(".card", { hasText: "Charts and sessions show the past" });
+  await expect(banner).toContainText("5-hour");
+  await page.mouse.wheel(0, 2000);
+  const weekly = header.getByRole("button", { name: "Weekly" });
+  const y = (await weekly.boundingBox())?.y;
+  await weekly.click();
+  await expect(banner).toContainText("Weekly");
+  expect((await weekly.boundingBox())?.y).toBe(y);
+  await header.getByRole("button", { name: "5-hour" }).click();
+  await expect(banner).toContainText("5-hour");
+  await expect(windows.locator("button.row-pick[aria-pressed=true]")).toHaveCount(1);
+
+  await header.getByRole("link", { name: "Overview" }).click();
+  await expect(header.getByLabel("Period")).toBeVisible();
+});

@@ -105,6 +105,14 @@ h2 {
   padding: 16px 0;
   border-bottom: 1px solid var(--border);
   margin-bottom: 20px;
+  position: sticky;
+  top: 0;
+  /* Above chart tooltips and the window strip's marks. */
+  z-index: 3;
+  background: var(--bg);
+  /* Paint the background edge to edge, so widened chart cards don't show beside it. */
+  box-shadow: 0 0 0 100vmax var(--bg);
+  clip-path: inset(0 -100vmax);
 }
 .top nav {
   display: flex;

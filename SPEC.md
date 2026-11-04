@@ -383,7 +383,7 @@ Nothing durable lives in the plugin cache (`~/.claude/plugins/cache/…`), which
 ## 14. Dashboard views
 
 1. **Overview** — totals for selectable period; API-equivalent cost vs. subscription price; cache hit ratio; tokens over time (stacked bars by token type, model, source or project; day/week/month buckets); API-equivalent cost over time at historical prices, grouped the same way (token type adds web search), with marks where prices changed. Legend entries toggle series; cache read starts hidden on the tokens chart. Plan windows live on the Plan view only.
-2. **Plan usage** — timeline of the current window, tabs for 5-hour (with the weekly curve) and weekly (weekly only), x-axis always the full window; sessions in the current window (same tabs), sortable by column, newest first by default; token/cost overlay; tokens-per-percent estimate (experimental).
+2. **Plan usage** — timeline of the current window, one 5-hour (with the weekly curve) / weekly (weekly only) switch in the sticky header in place of the period picker, x-axis always the full window; flipping it with a past window picked moves to the matching one (a 5-hour window's week; a week's last-picked or last 5-hour window); the Windows table above the sessions in the window, sortable by column, newest first by default; token/cost overlay; tokens-per-percent estimate (experimental).
 3. **Sessions** — list with source, project, title, model, duration, tokens, cost; detail page with per-request table, subagents and cache behaviour.
 4. **Models & projects** — breakdowns and trends.
 5. **Sources & status** — data sources, last scan, file counts, ingest errors, versions, price file version, local price editor.

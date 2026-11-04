@@ -6,7 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { presetRange, type Range, type RangePreset } from "./format";
 import { type Route, useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
-import { Plan } from "./views/Plan";
+import { type Kind, Plan, WindowTabs } from "./views/Plan";
 import { Sessions } from "./views/Sessions";
 import { Status } from "./views/Status";
 
@@ -24,12 +24,12 @@ const PRESETS: [RangePreset, string][] = [
   ["all", "All time"],
 ];
 
-function viewFor(route: Route, range: Range): ReactNode {
+function viewFor(route: Route, range: Range, kind: Kind): ReactNode {
   switch (route.view) {
     case "overview":
       return <Overview range={range} />;
     case "plan":
-      return <Plan range={range} />;
+      return <Plan kind={kind} />;
     case "sessions":
       return <Sessions range={range} id={route.id} />;
     case "status":
@@ -42,6 +42,8 @@ export function App() {
   const route = useRoute();
   const [preset, setPreset] = useState<RangePreset>("30d");
   const range = presetRange(preset);
+  // Lives here so the 5-hour/weekly switch sits in the sticky header and keeps its place.
+  const [kind, setKind] = useState<Kind>("five_hour");
   const status = useQuery({
     queryKey: ["status"],
     queryFn: ({ signal }) => api<StatusData>("/status", undefined, { signal }),
@@ -73,16 +75,19 @@ export function App() {
             </a>
           ))}
         </nav>
-        <label className="range">
-          <span className="sr-only">Period</span>
-          <select value={preset} onChange={(e) => setPreset(e.target.value as RangePreset)}>
-            {PRESETS.map(([p, label]) => (
-              <option key={p} value={p}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {route.view === "plan" && <WindowTabs kind={kind} onChange={setKind} />}
+        {(route.view === "overview" || route.view === "sessions") && (
+          <label className="range">
+            <span className="sr-only">Period</span>
+            <select value={preset} onChange={(e) => setPreset(e.target.value as RangePreset)}>
+              {PRESETS.map(([p, label]) => (
+                <option key={p} value={p}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </header>
       {unpriced.length > 0 && (
         <div className="banner" role="status">
@@ -91,7 +96,7 @@ export function App() {
         </div>
       )}
       <main>
-        <ErrorBoundary key={route.view}>{viewFor(route, range)}</ErrorBoundary>
+        <ErrorBoundary key={route.view}>{viewFor(route, range, kind)}</ErrorBoundary>
       </main>
     </div>
   );

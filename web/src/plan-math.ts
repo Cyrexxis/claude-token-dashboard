@@ -56,6 +56,41 @@ export function overlappingWeekly(w: PlanWindow, all: PlanWindow[]): PlanWindow[
   );
 }
 
+/**
+ * The window to show after flipping 5-hour/weekly from `from`: the week a 5-hour window starts in,
+ * or for a week the `remembered` 5-hour window if it starts inside, else the week's last one.
+ * Null means the current window (also when nothing matches), the same as "no pick".
+ */
+export function flipWindow(
+  from: PlanWindow | undefined,
+  all: PlanWindow[],
+  remembered: WindowId | null,
+): WindowId | null {
+  if (!from || from.startMs === null) return null;
+  const start = from.startMs;
+  const inSpan = (w: PlanWindow, span: PlanWindow) =>
+    w.startMs !== null &&
+    span.startMs !== null &&
+    w.startMs >= span.startMs &&
+    w.startMs < span.resetsAt;
+  let to: PlanWindow | undefined;
+  if (from.kind === "five_hour")
+    to = all.find(
+      (w) =>
+        w.kind === "seven_day" && w.startMs !== null && w.startMs <= start && start < w.resetsAt,
+    );
+  else {
+    const inWeek = all.filter((w) => w.kind === "five_hour" && inSpan(w, from));
+    to =
+      inWeek.find((w) => w.resetsAt === remembered?.resetsAt) ??
+      inWeek.reduce<PlanWindow | undefined>(
+        (a, w) => (a && a.resetsAt > w.resetsAt ? a : w),
+        undefined,
+      );
+  }
+  return !to || to.current ? null : { kind: to.kind, resetsAt: to.resetsAt };
+}
+
 /** One page of the Windows table: a time span and the windows that start inside it. */
 export type WindowPage = { fromMs: number; toMs: number; current: boolean; windows: PlanWindow[] };
 
