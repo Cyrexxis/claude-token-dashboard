@@ -252,7 +252,8 @@ tr.link {
 tr.selected td {
   background: var(--hover);
 }
-tr.link:hover td {
+tr.link:hover td,
+tr.link.hover td {
   background: var(--bg);
 }
 .row-pick {
@@ -358,4 +359,73 @@ tr.faded {
 .card-title {
   margin: 0;
   flex: 1;
+}
+
+/* Strip under the Windows table: one bar per window, filled between its first and last request. */
+.window-strip {
+  position: relative;
+  height: 48px;
+  margin: 16px 14px 0;
+}
+.window-strip .lane {
+  position: absolute;
+  inset: 8px 0 auto;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.window-strip .tick,
+.window-strip .now {
+  position: absolute;
+  top: 2px;
+  height: 30px;
+  border-left: 1px solid var(--border);
+}
+.window-strip .now {
+  z-index: 2;
+  border-left: 1px dashed var(--muted);
+}
+.window-strip .day {
+  position: absolute;
+  top: 32px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.window-bar {
+  position: absolute;
+  top: 8px;
+  height: 18px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  /* The surface-colored border keeps touching windows apart. */
+  border: 1px solid var(--surface);
+  background: var(--grid);
+}
+.window-bar .fill {
+  position: absolute;
+  inset: 0 auto;
+  min-width: 2px;
+}
+.window-bar:hover,
+.window-bar.hover,
+.window-bar:focus-visible {
+  z-index: 1;
+  transform: scale(1.04, 1.3);
+}
+.window-bar[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .window-bar {
+    transition: transform 0.15s ease;
+  }
+}
+.window-pager {
+  justify-content: space-between;
+  margin: 8px 0 0;
 }

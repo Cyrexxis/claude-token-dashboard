@@ -144,6 +144,7 @@ test("window math", () => {
       usdPerPercent: 0.05,
       tokensPerPercent: 5,
       lowSignal: false,
+      activity: [[at("2026-10-15T12:30:00Z"), at("2026-10-15T15:00:00Z")]],
     },
   ]);
 });
@@ -206,6 +207,36 @@ test("spend_limit has no start and no per-1 % figures", () => {
     usdPerPercent: null,
     tokensPerPercent: null,
   });
+});
+
+test("activity: a weekly window has one span per active local day, clipped to the window; a day counts as active from requests outside the window too", () => {
+  const db = openDatabase(":memory:");
+  const local = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
+  recordSnapshots(
+    db,
+    {
+      windows: [
+        { kind: "seven_day", percentUsed: 10, resetsAt: new Date(local(20, 3)).toISOString() },
+      ],
+    },
+    local(19, 12),
+  );
+  for (const ts of [
+    local(12, 23), // a day before the window: not shown
+    local(13, 9),
+    local(13, 21),
+    local(14, 2), // after midnight: the next day
+    local(16, 10), // the 15th is skipped
+    local(20, 5), // after the reset, yet the 20th is active, so the window's last 3 hours are too
+  ])
+    insertRequest(db, { ts, cost_usd: 0, input: 1 });
+  const [w] = getPlanWindows(db, NONE, local(20, 6)).past;
+  expect(w?.activity).toEqual([
+    [local(13, 3), local(14, 0)],
+    [local(14, 0), local(15, 0)],
+    [local(16, 0), local(17, 0)],
+    [local(20, 0), local(20, 3)],
+  ]);
 });
 
 test("lowSignal below 5 %", () => {

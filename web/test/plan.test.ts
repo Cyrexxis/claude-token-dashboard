@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { findWindow, mergeReadings, overlappingWeekly, windowTicks } from "../src/plan-math";
+import {
+  findWindow,
+  fiveHourByWeek,
+  mergeReadings,
+  overlappingWeekly,
+  weeklyByQuarter,
+  windowTicks,
+} from "../src/plan-math";
 
 const H = 3_600_000;
 const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number) => ({
@@ -64,4 +71,47 @@ test("findWindow: looks a picked window up by identity; null when gone or unpick
   expect(findWindow([a, b], { kind: "seven_day", resetsAt: 15 * H })).toBe(b);
   expect(findWindow([a, b], { kind: "five_hour", resetsAt: 20 * H })).toBeNull();
   expect(findWindow([a, b], null)).toBeNull();
+});
+
+test("fiveHourByWeek: weeks newest first, 5-hour windows grouped by where they start", () => {
+  const win = (kind: string, startMs: number | null, resetsAt: number, current = false) =>
+    ({ kind, startMs, resetsAt, current }) as Parameters<typeof fiveHourByWeek>[0][number];
+  const thisWeek = win("seven_day", 168 * H, 336 * H, true);
+  const lastWeek = win("seven_day", 0, 168 * H);
+  const late = win("five_hour", 200 * H, 205 * H);
+  const straddle = win("five_hour", 166 * H, 171 * H); // starts last week, resets this week
+  const early = win("five_hour", 10 * H, 15 * H);
+  const spend = win("seven_day", null, 400 * H); // no known start: not a page
+  expect(fiveHourByWeek([late, lastWeek, straddle, thisWeek, early, spend])).toEqual([
+    { fromMs: 168 * H, toMs: 336 * H, current: true, windows: [late] },
+    { fromMs: 0, toMs: 168 * H, current: false, windows: [straddle, early] },
+  ]);
+});
+
+test("weeklyByQuarter: local calendar quarters newest first, weeks grouped by where they start", () => {
+  const week = (y: number, m: number, d: number) => {
+    const startMs = new Date(y, m, d).getTime();
+    return { kind: "seven_day", startMs, resetsAt: startMs + 168 * H } as Parameters<
+      typeof weeklyByQuarter
+    >[0][number];
+  };
+  const q4a = week(2026, 9, 1);
+  const q4b = week(2026, 11, 29); // resets in January: still Q4
+  const q3 = week(2026, 6, 15);
+  const five = { ...week(2026, 9, 2), kind: "five_hour" };
+  const now = new Date(2026, 10, 4).getTime();
+  expect(weeklyByQuarter([q4b, five, q3, q4a], now)).toEqual([
+    {
+      fromMs: new Date(2026, 9, 1).getTime(),
+      toMs: new Date(2027, 0, 1).getTime(),
+      current: true,
+      windows: [q4b, q4a],
+    },
+    {
+      fromMs: new Date(2026, 6, 1).getTime(),
+      toMs: new Date(2026, 9, 1).getTime(),
+      current: false,
+      windows: [q3],
+    },
+  ]);
 });

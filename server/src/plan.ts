@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { PlanSnapshotPoint, PlanSnapshots, PlanWindow, PlanWindows } from "@td/shared";
-import { BadRequest, dayBoundsMs, type Range } from "./api/queries";
+import { BadRequest, dayBoundsMs, type Range, toDate } from "./api/queries";
 
 const ORG = "default"; // single account (user decision); the column keeps room for more
 const MINUTE = 60_000;
@@ -63,6 +63,15 @@ const WINDOW_MS: Record<string, number> = { five_hour: 5 * HOUR, seven_day: 7 * 
 const LOW_SIGNAL_PERCENT = 5;
 
 /** Windows are (kind, resets_at) groups of readings; usage is summed from requests at read time, so repricing needs no rebuild. */
+/** [first local midnight, last ms of the last local day] around [start, end): an active day counts in full. */
+function wholeDays(start: number, end: number): [number, number] {
+  const from = new Date(start);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(end - 1);
+  to.setHours(24, 0, 0, 0);
+  return [from.getTime(), to.getTime() - 1];
+}
+
 export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows {
   const { fromMs, toMs } = dayBoundsMs(r);
   // In range, or still running (a current window ignores the range). Keeps "All time" the only unbounded case.
@@ -80,9 +89,17 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
   const peakTs = db.query<{ ts: number }, [string, string, number, number]>(
     "SELECT MAX(ts) ts FROM plan_snapshots WHERE org_id = ? AND kind = ? AND resets_at = ? AND percent_used = ?",
   );
-  const usage = db.query<{ tokens: number; cost: number }, [number, number]>(
+  const usage = db.query<
+    { tokens: number; cost: number; first: number | null; last: number | null },
+    [number, number]
+  >(
     `SELECT TOTAL(input) + TOTAL(output) + TOTAL(cache_read) + TOTAL(cache_write_5m) + TOTAL(cache_write_1h) tokens,
-       TOTAL(cost_usd) cost FROM requests WHERE ts >= ? AND ts <= ?`,
+       TOTAL(cost_usd) cost, MIN(ts) first, MAX(ts) last FROM requests WHERE ts >= ? AND ts <= ?`,
+  );
+  // Local days with requests: the same days the rollups use.
+  const activeDays = db.query<{ day: string }, [number, number]>(
+    `SELECT DISTINCT date(ts / 1000, 'unixepoch', 'localtime') day FROM requests
+     WHERE ts >= ? AND ts <= ? ORDER BY day`,
   );
   const current: PlanWindow[] = [];
   const past: PlanWindow[] = [];
@@ -98,7 +115,8 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
     const len = WINDOW_MS[g.kind];
     const startMs = len === undefined ? null : g.resets_at - len;
     const pTs = peakTs.get(ORG, g.kind, g.resets_at, g.peak)?.ts ?? 0;
-    const all = startMs === null ? null : usage.get(startMs, Math.min(g.resets_at, now) - 1);
+    const end = Math.min(g.resets_at, now) - 1;
+    const all = startMs === null ? null : usage.get(startMs, end);
     const atPeak = startMs === null ? null : usage.get(startMs, pTs);
     const per = (v: number | undefined) =>
       atPeak && g.peak > 0 && v !== undefined ? v / g.peak : null;
@@ -116,6 +134,19 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
       usdPerPercent: per(atPeak?.cost),
       tokensPerPercent: per(atPeak?.tokens),
       lowSignal: g.peak < LOW_SIGNAL_PERCENT,
+      activity:
+        startMs === null
+          ? []
+          : g.kind === "seven_day"
+            ? activeDays.all(...wholeDays(startMs, g.resets_at)).map(({ day }) => {
+                const d = toDate(day);
+                const from = d.getTime();
+                d.setDate(d.getDate() + 1);
+                return [Math.max(from, startMs), Math.min(d.getTime(), g.resets_at)];
+              })
+            : all?.first != null && all.last != null
+              ? [[all.first, all.last]]
+              : [],
     });
   }
   return { current, past };

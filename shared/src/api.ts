@@ -211,6 +211,8 @@ export type PlanWindow = {
   usdPerPercent: number | null;
   tokensPerPercent: number | null;
   lowSignal: boolean;
+  /** Spans with Claude Code requests: each active local day of a weekly window (clipped to it), or first → last request of a 5-hour one. */
+  activity: [number, number][];
 };
 export type PlanWindows = { current: PlanWindow[]; past: PlanWindow[] };
 /** `server.json`: how the mod finds the server (SPEC §11.3). */

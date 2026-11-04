@@ -55,3 +55,45 @@ export function overlappingWeekly(w: PlanWindow, all: PlanWindow[]): PlanWindow[
       x.kind === "seven_day" && x.startMs !== null && x.startMs < w.resetsAt && start < x.resetsAt,
   );
 }
+
+/** One page of the Windows table: a time span and the windows that start inside it. */
+export type WindowPage = { fromMs: number; toMs: number; current: boolean; windows: PlanWindow[] };
+
+/**
+ * One page per weekly window, newest first, holding the 5-hour windows that start inside it (in `all`'s order).
+ * shortcut: a 5-hour window outside every listed week is not shown; add an "other" page if that shows up.
+ */
+export function fiveHourByWeek(all: PlanWindow[]): WindowPage[] {
+  return all
+    .filter((w) => w.kind === "seven_day" && w.startMs !== null)
+    .sort((a, b) => b.resetsAt - a.resetsAt)
+    .map((week) => {
+      const fromMs = week.startMs ?? 0;
+      const windows = all.filter(
+        (w) =>
+          w.kind === "five_hour" &&
+          w.startMs !== null &&
+          w.startMs >= fromMs &&
+          w.startMs < week.resetsAt,
+      );
+      return { fromMs, toMs: week.resetsAt, current: week.current, windows };
+    });
+}
+
+/** One page per local calendar quarter, newest first, holding the weekly windows that start inside it. */
+export function weeklyByQuarter(all: PlanWindow[], now: number): WindowPage[] {
+  const quarters = new Map<number, PlanWindow[]>();
+  for (const w of all) {
+    if (w.kind !== "seven_day" || w.startMs === null) continue;
+    const d = new Date(w.startMs);
+    const q = new Date(d.getFullYear(), d.getMonth() - (d.getMonth() % 3), 1).getTime();
+    quarters.set(q, [...(quarters.get(q) ?? []), w]);
+  }
+  return [...quarters]
+    .sort(([a], [b]) => b - a)
+    .map(([fromMs, windows]) => {
+      const d = new Date(fromMs);
+      const toMs = new Date(d.getFullYear(), d.getMonth() + 3, 1).getTime();
+      return { fromMs, toMs, current: fromMs <= now && now < toMs, windows };
+    });
+}
