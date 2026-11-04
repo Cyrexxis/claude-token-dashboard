@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { Timeseries } from "@td/shared";
 import { useState } from "react";
 import { api } from "../api";
@@ -24,6 +24,7 @@ export function BreakdownChart({
   const q = useQuery({
     queryKey: ["breakdown", params],
     queryFn: ({ signal }) => api<Timeseries>("/breakdown", params, { signal }),
+    placeholderData: keepPreviousData,
   });
   return (
     <section className="card">

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { BUCKETS, type Bucket, type Metric, type RollupGroup, type Timeseries } from "@td/shared";
 import { useState } from "react";
 import { api } from "../api";
@@ -30,6 +30,7 @@ export function SeriesView({
   const q = useQuery({
     queryKey: ["timeseries", params],
     queryFn: ({ signal }) => api<Timeseries>("/timeseries", params, { signal }),
+    placeholderData: keepPreviousData,
   });
   return (
     <ChartCard

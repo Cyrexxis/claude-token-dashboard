@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type Prices, type Summary, totalTokens } from "@td/shared";
 import { api } from "../api";
 import { BreakdownChart } from "../components/BreakdownChart";
@@ -13,6 +13,8 @@ export function Overview({ range }: ViewProps) {
   const summary = useQuery({
     queryKey: ["summary", range],
     queryFn: ({ signal }) => api<Summary>("/summary", range, { signal }),
+    // Keeps the old view on screen while a new range loads, so the page doesn't jump.
+    placeholderData: keepPreviousData,
   });
   const prices = useQuery({
     queryKey: ["prices"],
