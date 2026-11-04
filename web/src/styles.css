@@ -360,6 +360,29 @@ tr.faded {
   margin: 0;
   flex: 1;
 }
+/* A widened chart card leaves 2.5 % of the viewport to each edge; min() keeps it from ever narrowing. */
+.card.wide {
+  margin-inline: min(0px, calc(50% - 47.5vw));
+}
+.widen {
+  display: inline-flex;
+  padding: 6px 8px;
+  color: var(--muted);
+}
+.widen[aria-pressed="true"] {
+  color: var(--text);
+}
+/* Below this the page column (1248px) already fills 95 % of the viewport, so widening does nothing. */
+@media (max-width: 1320px) {
+  .widen {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: margin 0.3s ease;
+  }
+}
 
 /* Strip under the Windows table: one bar per window, filled between its first and last request. */
 .window-strip {

@@ -3,6 +3,7 @@ import { BUCKETS, type Bucket, type Metric, type RollupGroup, type Timeseries } 
 import { useState } from "react";
 import { api } from "../api";
 import { autoBucket, fmtTokens, fmtUsd, type Range } from "../format";
+import { ChartCard } from "./ChartCard";
 import { TimeChart } from "./TimeChart";
 import { GroupSelect } from "./Toggle";
 
@@ -31,21 +32,24 @@ export function SeriesView({
     queryFn: ({ signal }) => api<Timeseries>("/timeseries", params, { signal }),
   });
   return (
-    <section className="card">
-      <div className="toolbar">
-        <h2 className="card-title">{title}</h2>
-        <GroupSelect value={group} groups={groups} onChange={setGroup} />
-        <label>
-          Per{" "}
-          <select value={bucket} onChange={(e) => setPicked(e.target.value as Bucket)}>
-            {BUCKETS.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <ChartCard
+      title={title}
+      controls={
+        <>
+          <GroupSelect value={group} groups={groups} onChange={setGroup} />
+          <label>
+            Per{" "}
+            <select value={bucket} onChange={(e) => setPicked(e.target.value as Bucket)}>
+              {BUCKETS.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      }
+    >
       {q.error && <p className="error">{q.error.message}</p>}
       {q.data && (
         <TimeChart
@@ -58,6 +62,6 @@ export function SeriesView({
         />
       )}
       {!q.data && !q.error && <p className="muted">Loading…</p>}
-    </section>
+    </ChartCard>
   );
 }

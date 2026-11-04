@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { axisProps, seriesColor, tooltipStyle } from "../chart-theme";
+import { ChartCard } from "../components/ChartCard";
 import { SessionTable } from "../components/SessionTable";
 import { TimeChart } from "../components/TimeChart";
 import { GroupSelect, MetricToggle } from "../components/Toggle";
@@ -262,16 +263,16 @@ function WindowSeries({
       : skipToken,
   });
   return (
-    <section className="card">
-      <div className="toolbar">
-        <h2 className="card-title">
-          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the{" "}
-          {picked ? "selected" : "current"} window
-        </h2>
-        <MetricToggle value={metric} onChange={setMetric} />
-        <GroupSelect value={group} groups={GROUPS} onChange={setGroup} />
-        {!picked && <WindowTabs kind={kind} onChange={setKind} />}
-      </div>
+    <ChartCard
+      title={`${metric === "tokens" ? "Tokens" : "API-equivalent cost"} in the ${picked ? "selected" : "current"} window`}
+      controls={
+        <>
+          <MetricToggle value={metric} onChange={setMetric} />
+          <GroupSelect value={group} groups={GROUPS} onChange={setGroup} />
+          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
+        </>
+      }
+    >
       {!w && <p className="muted empty">No current {kindLabel(kind)} window.</p>}
       {q.error && <p className="error">{q.error.message}</p>}
       {w && !q.data && !q.error && <p className="muted">Loading…</p>}
@@ -288,7 +289,7 @@ function WindowSeries({
           defaultHidden={metric === "tokens" ? ["cacheRead"] : []}
         />
       )}
-    </section>
+    </ChartCard>
   );
 }
 
@@ -593,13 +594,12 @@ export function Plan({ range }: ViewProps) {
           </button>
         </div>
       )}
-      <section className="card">
-        <div className="toolbar">
-          <h2 className="card-title">Plan usage in the {picked ? "selected" : "current"} window</h2>
-          {!picked && <WindowTabs kind={kind} onChange={setKind} />}
-        </div>
+      <ChartCard
+        title={`Plan usage in the ${picked ? "selected" : "current"} window`}
+        controls={!picked && <WindowTabs kind={kind} onChange={setKind} />}
+      >
         {chartWin ? <Timeline w={chartWin} current={chartCurrent} /> : none(kind)}
-      </section>
+      </ChartCard>
       <WindowSeries current={current} picked={picked} tabKind={kind} setKind={setKind} />
       <section className="card">
         <div className="toolbar">

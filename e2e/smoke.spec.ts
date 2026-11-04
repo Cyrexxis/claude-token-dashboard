@@ -15,3 +15,19 @@ test("overview loads fixture data and nav switches views", async ({ page }) => {
   }
   expect(errors).toEqual([]);
 });
+
+test("widen button stretches a chart card to 95 % of the viewport and back", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/");
+  const card = page.locator("section.card", {
+    has: page.getByRole("heading", { name: "Tokens", exact: true }),
+  });
+  const width = async () => (await card.boundingBox())?.width ?? 0;
+  await expect(card.locator(".recharts-surface")).toBeVisible();
+  const before = await width();
+
+  await card.getByRole("button", { name: "Widen chart" }).click();
+  await expect.poll(width).toBeCloseTo(1920 * 0.95, -1);
+  await card.getByRole("button", { name: "Narrow chart" }).click();
+  await expect.poll(width).toBeCloseTo(before, -1);
+});

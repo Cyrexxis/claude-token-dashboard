@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { api, HttpError } from "../api";
 import { axisProps, SERIES_VARS, tooltipStyle } from "../chart-theme";
+import { ChartCard } from "../components/ChartCard";
 import { StatTile } from "../components/StatTile";
 import { TimeChart } from "../components/TimeChart";
 import { GroupSelect, MetricToggle } from "../components/Toggle";
@@ -51,14 +52,15 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
   });
   const multiDay = new Date(first).toDateString() !== new Date(last).toDateString();
   return (
-    <section className="card">
-      <div className="toolbar">
-        <h2 className="card-title">
-          {metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session
-        </h2>
-        <MetricToggle value={metric} onChange={setMetric} />
-        <GroupSelect value={group} groups={["type", "agent"] as const} onChange={setGroup} />
-      </div>
+    <ChartCard
+      title={`${metric === "tokens" ? "Tokens" : "API-equivalent cost"} over the session`}
+      controls={
+        <>
+          <MetricToggle value={metric} onChange={setMetric} />
+          <GroupSelect value={group} groups={["type", "agent"] as const} onChange={setGroup} />
+        </>
+      }
+    >
       {q.error && <p className="error">{q.error.message}</p>}
       {!q.data && !q.error && <p className="muted">Loading…</p>}
       {q.data && (
@@ -75,7 +77,7 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
         />
       )}
       <p className="muted note">Includes sub-agents; {stepLabel(stepMs)} slots.</p>
-    </section>
+    </ChartCard>
   );
 }
 const CACHE_SERIES = [
@@ -154,8 +156,7 @@ export function SessionDetail({ id }: { id: string }) {
         )}
       </div>
       {context.length > 1 && (
-        <section className="card">
-          <h2>Context window of the main agent per request</h2>
+        <ChartCard title="Context window of the main agent per request">
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={context}>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
@@ -195,7 +196,7 @@ export function SessionDetail({ id }: { id: string }) {
               ))}
             </AreaChart>
           </ResponsiveContainer>
-        </section>
+        </ChartCard>
       )}
       <SessionSeries s={s} />
       {agents.length > 0 && (
