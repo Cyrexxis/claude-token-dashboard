@@ -1,10 +1,10 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { SessionList } from "@td/shared";
 import { useEffect, useState } from "react";
-import { api } from "../api";
-import { SessionTable } from "../components/SessionTable";
-import { forFilter } from "../paging";
-import type { ViewProps } from "../types";
+import { api } from "../../api";
+import { SessionTable } from "../../components/SessionTable";
+import { forFilter } from "../../paging";
+import type { ViewProps } from "../../types";
 import { SessionDetail } from "./SessionDetail";
 
 const PAGE = 50;

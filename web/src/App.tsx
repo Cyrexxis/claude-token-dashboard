@@ -7,9 +7,11 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { presetRange, type Range, type RangePreset } from "./format";
 import { type Route, useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
-import { type Kind, Plan, WindowTabs } from "./views/Plan";
-import { Sessions } from "./views/Sessions";
-import { Status } from "./views/Status";
+import { Plan } from "./views/plan/Plan";
+import type { Kind } from "./views/plan/util";
+import { WindowTabs } from "./views/plan/WindowTabs";
+import { Sessions } from "./views/sessions/Sessions";
+import { Status } from "./views/status/Status";
 
 const NAV: [View, string][] = [
   ["overview", "Overview"],
