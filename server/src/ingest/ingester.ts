@@ -198,9 +198,9 @@ export async function ingestFiles(
       }
       st.finishFile.run(cur.size, Date.now(), fileId);
     } catch (e) {
-      st.fileError.run(errorMessage(e), path); // no-op when the file was never seen
-      // Deleted between listing and reading: normal cleanup, not an error.
+      // Deleted (between listing and reading, or reported by the watcher): normal cleanup, not an error.
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        st.fileError.run(errorMessage(e), path); // no-op when the file was never seen
         errors++;
         console.error(`ingest ${path}: ${errorMessage(e)}`);
       }

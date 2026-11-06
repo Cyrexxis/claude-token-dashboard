@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   renameSync,
+  rmSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
@@ -285,6 +286,20 @@ test("deleted file is skipped, not an error", async () => {
   expect(r.errors).toBe(0);
   expect(r.newRequests).toBe(1);
   expect(count(db)).toBe(1);
+});
+
+test("a known transcript deleted later (Claude Code's cleanup) is not marked as an error", async () => {
+  const { db, file, ingest } = setup();
+  const p = file("old.jsonl", [assistant()]);
+  await ingest(p);
+  rmSync(p);
+  // The watcher reports the deletion like a write.
+  expect((await ingest(p)).errors).toBe(0);
+  expect(one(db, "select error_count, last_error from files where path = ?", p)).toEqual({
+    error_count: 0,
+    last_error: null,
+  });
+  expect(count(db)).toBe(1); // its history stays
 });
 
 test("emits usage.updated with sessionIds and range; rollups match", async () => {
