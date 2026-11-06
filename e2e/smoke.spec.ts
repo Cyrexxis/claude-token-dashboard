@@ -116,3 +116,26 @@ test("a new view opens at the top; back and forward keep their scroll position",
   await expect(sessions).toBeVisible();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
 });
+
+test("theme toggle switches light and dark, recolors charts, and remembers the choice", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const grid = page.locator(".recharts-cartesian-grid line").first();
+  const gridStroke = () => grid.evaluate((el) => getComputedStyle(el).stroke);
+  await expect(grid).toBeAttached();
+  expect(await bg()).toBe("rgb(249, 249, 247)");
+  expect(await gridStroke()).toBe("rgb(225, 224, 217)");
+
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  expect(await bg()).toBe("rgb(13, 13, 13)");
+  expect(await gridStroke()).toBe("rgb(44, 44, 42)");
+
+  // The stored choice beats the OS setting after a reload.
+  await page.reload();
+  expect(await bg()).toBe("rgb(13, 13, 13)");
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  expect(await bg()).toBe("rgb(249, 249, 247)");
+});

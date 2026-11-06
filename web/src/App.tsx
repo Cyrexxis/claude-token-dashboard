@@ -3,6 +3,7 @@ import type { Status as StatusData } from "@td/shared";
 import { type ReactNode, useState } from "react";
 import { api, NetworkError, useLiveEvents } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { presetRange, type Range, type RangePreset } from "./format";
 import { type Route, useRoute, type View } from "./route";
 import { Overview } from "./views/Overview";
@@ -88,6 +89,7 @@ export function App() {
             </select>
           </label>
         )}
+        <ThemeToggle />
       </header>
       {unpriced.length > 0 && (
         <div className="banner" role="status">

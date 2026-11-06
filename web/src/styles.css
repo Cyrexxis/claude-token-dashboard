@@ -1,54 +1,36 @@
 :root {
+  /* Follows the OS until the header toggle sets data-theme; every color is light-dark(light, dark). */
   color-scheme: light dark;
-  --bg: #f9f9f7;
-  --surface: #fcfcfb;
-  --text: #0b0b0b;
-  --muted: #6b6a66;
-  --border: #e1e0d9;
+  --bg: light-dark(#f9f9f7, #0d0d0d);
+  --surface: light-dark(#fcfcfb, #1a1a19);
+  --text: light-dark(#0b0b0b, #f0efec);
+  --muted: light-dark(#6b6a66, #a3a198);
+  --border: light-dark(#e1e0d9, #2c2c2a);
   /* chart tokens: dataviz reference palette, fixed categorical order */
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --hover: rgba(11, 11, 11, 0.05);
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
-  --series-5: #e87ba4;
-  --series-6: #008300;
-  --series-7: #6250d6;
-  --series-8: #e34948;
-  --series-other: #b5b3ab;
-  --accent: #2f6fdf;
-  --warn-bg: #fff4d6;
-  --warn-text: #6b4e00;
-  --danger: #b42318;
+  --grid: light-dark(#e1e0d9, #2c2c2a);
+  --axis: light-dark(#c3c2b7, #383835);
+  --hover: light-dark(rgba(11, 11, 11, 0.05), rgba(255, 255, 255, 0.06));
+  --series-1: light-dark(#2a78d6, #3987e5);
+  --series-2: light-dark(#eb6834, #d95926);
+  --series-3: light-dark(#1baf7a, #199e70);
+  --series-4: light-dark(#eda100, #c98500);
+  --series-5: light-dark(#e87ba4, #d55181);
+  --series-6: light-dark(#008300, #008300);
+  --series-7: light-dark(#6250d6, #9085e9);
+  --series-8: light-dark(#e34948, #e66767);
+  --series-other: light-dark(#b5b3ab, #5f5e59);
+  --accent: light-dark(#2f6fdf, #6b9cf5);
+  --warn-bg: light-dark(#fff4d6, #3a2f10);
+  --warn-text: light-dark(#6b4e00, #f3d68a);
+  --danger: light-dark(#b42318, #f4877c);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d0d0d;
-    --surface: #1a1a19;
-    --text: #f0efec;
-    --muted: #a3a198;
-    --border: #2c2c2a;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --hover: rgba(255, 255, 255, 0.06);
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
-    --series-7: #9085e9;
-    --series-8: #e66767;
-    --series-other: #5f5e59;
-    --accent: #6b9cf5;
-    --warn-bg: #3a2f10;
-    --warn-text: #f3d68a;
-    --danger: #f4877c;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -459,4 +441,47 @@ tr.faded {
 .window-pager {
   justify-content: space-between;
   margin: 8px 0 0;
+}
+
+/* Header theme switch: sun in light, moon in dark (see ThemeToggle). */
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  color: var(--muted);
+  &:hover {
+    color: var(--text);
+  }
+  svg {
+    overflow: visible;
+  }
+  .sun-core,
+  .sun-rays {
+    transform-origin: 12px 12px;
+  }
+}
+.theme-toggle[data-theme-icon="dark"] {
+  .sun-core {
+    transform: scale(1.6);
+  }
+  .moon-cut {
+    transform: translateX(-10px);
+  }
+  .sun-rays {
+    transform: rotate(90deg) scale(0);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .theme-toggle {
+    .sun-core,
+    .moon-cut {
+      transition: transform 0.45s cubic-bezier(0.5, 1.4, 0.4, 1);
+    }
+    .sun-rays {
+      transition:
+        transform 0.45s ease,
+        opacity 0.3s ease;
+    }
+  }
 }
