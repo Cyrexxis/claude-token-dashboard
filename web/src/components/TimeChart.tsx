@@ -5,6 +5,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  BarStack,
   CartesianGrid,
   Legend,
   ReferenceLine,
@@ -13,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { axisProps, seriesColor, shortDay } from "../chart-theme";
+import { axisProps, seriesColors, shortDay } from "../chart-theme";
 
 type Props = {
   data: Timeseries;
@@ -89,7 +90,7 @@ export function TimeChart({
     });
   // j stays the index into data.series, so colors and dataKeys don't shift when a series is hidden.
   const shown = data.series.flatMap((s, j) => (hidden.has(s.key) ? [] : [{ s, j }]));
-  const last = shown.at(-1)?.j;
+  const colors = seriesColors(data.series.map((s) => s.key));
   const axis = axisProps;
   const common = (
     <>
@@ -128,7 +129,7 @@ export function TimeChart({
                   aria-pressed={!hidden.has(s.key)}
                   onClick={() => toggle(s.key)}
                 >
-                  <span className="swatch" style={{ background: seriesColor(s.key, j) }} />
+                  <span className="swatch" style={{ background: colors[j] }} />
                   {s.label}
                 </button>
               ))}
@@ -152,19 +153,20 @@ export function TimeChart({
       {kind === "bar" ? (
         <BarChart data={rows} barCategoryGap="20%" layout={horizontal ? "vertical" : "horizontal"}>
           {common}
-          {shown.map(({ s, j }) => (
-            <Bar
-              key={s.key}
-              dataKey={`s${j}`}
-              name={s.label}
-              stackId="a"
-              fill={seriesColor(s.key, j)}
-              stroke="var(--surface)"
-              strokeWidth={1}
-              radius={j === last ? (horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0}
-              isAnimationActive={false}
-            />
-          ))}
+          {/* Rounds only the outer end of each whole stack; the axis end stays flat. */}
+          <BarStack radius={horizontal ? [0, 2, 2, 0] : [2, 2, 0, 0]}>
+            {shown.map(({ s, j }) => (
+              <Bar
+                key={s.key}
+                dataKey={`s${j}`}
+                name={s.label}
+                fill={colors[j]}
+                stroke="var(--surface)"
+                strokeWidth={1}
+                isAnimationActive={false}
+              />
+            ))}
+          </BarStack>
         </BarChart>
       ) : (
         <AreaChart data={rows}>
@@ -176,7 +178,7 @@ export function TimeChart({
               name={s.label}
               stackId="a"
               type="monotone"
-              fill={seriesColor(s.key, j)}
+              fill={colors[j]}
               fillOpacity={0.85}
               stroke="var(--surface)"
               strokeWidth={2}

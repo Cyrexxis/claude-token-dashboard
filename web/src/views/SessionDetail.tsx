@@ -82,9 +82,10 @@ function SessionSeries({ s }: { s: Detail["session"] }) {
   );
 }
 const CACHE_SERIES = [
-  { key: "cacheRead", label: "Cache read", color: SERIES_VARS[0] },
+  // Same slots as the token types elsewhere (chart-theme TYPE_SLOT); cache write takes 1h's orange.
+  { key: "cacheRead", label: "Cache read", color: SERIES_VARS[2] },
   { key: "cacheWrite", label: "Cache write", color: SERIES_VARS[1] },
-  { key: "input", label: "Uncached input", color: SERIES_VARS[2] },
+  { key: "input", label: "Uncached input", color: SERIES_VARS[3] },
 ] as const;
 
 export function SessionDetail({ id }: { id: string }) {

@@ -6,18 +6,18 @@
   --text: light-dark(#0b0b0b, #f0efec);
   --muted: light-dark(#6b6a66, #a3a198);
   --border: light-dark(#e1e0d9, #2c2c2a);
-  /* chart tokens: dataviz reference palette, fixed categorical order */
+  /* chart tokens: fixed categorical order; slots 1-5 stay apart all-pairs, all 8 adjacent (dataviz validator) */
   --grid: light-dark(#e1e0d9, #2c2c2a);
   --axis: light-dark(#c3c2b7, #383835);
   --hover: light-dark(rgba(11, 11, 11, 0.05), rgba(255, 255, 255, 0.06));
-  --series-1: light-dark(#2a78d6, #3987e5);
-  --series-2: light-dark(#eb6834, #d95926);
-  --series-3: light-dark(#1baf7a, #199e70);
-  --series-4: light-dark(#eda100, #c98500);
-  --series-5: light-dark(#e87ba4, #d55181);
-  --series-6: light-dark(#008300, #008300);
-  --series-7: light-dark(#6250d6, #9085e9);
-  --series-8: light-dark(#e34948, #e66767);
+  --series-1: light-dark(#1d6dcc, #2653c1);
+  --series-2: light-dark(#fd8706, #e66700);
+  --series-3: light-dark(#2dbf94, #15aa8f);
+  --series-4: light-dark(#d490fc, #a975e3);
+  --series-5: light-dark(#b42965, #a21c68);
+  --series-6: light-dark(#777b0d, #5b6c00);
+  --series-7: light-dark(#b96ea8, #b16192);
+  --series-8: light-dark(#8080fc, #6967e1);
   --series-other: light-dark(#b5b3ab, #5f5e59);
   --accent: light-dark(#2f6fdf, #6b9cf5);
   --warn-bg: light-dark(#fff4d6, #3a2f10);
