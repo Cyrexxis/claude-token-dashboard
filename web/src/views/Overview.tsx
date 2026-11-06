@@ -70,17 +70,7 @@ export function Overview({ range }: ViewProps) {
       </div>
       <SeriesView
         range={range}
-        metric="tokens"
         groups={["type", "model", "source", "project"]}
-        title="Tokens"
-        // Cache reads dwarf every other type and would flatten the chart.
-        defaultHidden={["cacheRead"]}
-      />
-      <SeriesView
-        range={range}
-        metric="cost"
-        groups={["type", "model", "source", "project"]}
-        title="API-equivalent cost at historical prices"
         marks={priceMarks}
       />
       <div className="pair">

@@ -21,21 +21,42 @@ test("widen button stretches a chart card to 95 % of the viewport, remembers it,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/");
-  const card = page.locator("section.card", {
-    has: page.getByRole("heading", { name: "Tokens", exact: true }),
-  });
+  // The Overview usage chart: the only card with a widen button.
+  const card = page.locator("section.card", { has: page.locator("button.widen") });
   const width = async () => (await card.boundingBox())?.width ?? 0;
   await expect(card.locator(".recharts-surface")).toBeVisible();
   const before = await width();
 
   await card.getByRole("button", { name: "Widen chart" }).click();
   await expect.poll(width).toBeCloseTo(1920 * 0.95, -1);
-  // Remembered per chart: still wide after a reload, while the cost chart stays narrow.
   await page.reload();
   await expect.poll(width).toBeCloseTo(1920 * 0.95, -1);
-  await expect(page.getByRole("button", { name: "Widen chart" })).toHaveCount(1);
   await card.getByRole("button", { name: "Narrow chart" }).click();
   await expect.poll(width).toBeCloseTo(before, -1);
+});
+
+test("overview usage chart switches tokens and cost in place and remembers the pick", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/");
+  const card = page.locator("section.card", { has: page.locator("button.widen") });
+  const title = card.getByRole("heading");
+  const width = async () => (await card.boundingBox())?.width ?? 0;
+  await expect(title).toHaveText("Tokens");
+  await card.getByRole("button", { name: "Widen chart" }).click();
+  await expect.poll(width).toBeCloseTo(1920 * 0.95, -1);
+
+  // One widen setting for both metrics: switching never resizes the card.
+  await card.getByRole("button", { name: "Cost", exact: true }).click();
+  await expect(title).toHaveText("API-equivalent cost at historical prices");
+  await expect(card.locator(".recharts-yAxis-tick-labels").first()).toContainText("$");
+  expect(await width()).toBeCloseTo(1920 * 0.95, -1);
+
+  await page.reload();
+  await expect(title).toHaveText("API-equivalent cost at historical prices");
+  await card.getByRole("button", { name: "Tokens", exact: true }).click();
+  await expect(title).toHaveText("Tokens");
 });
 
 test("plan: 5-hour/weekly switch lives in the sticky header and follows the picked window", async ({
@@ -103,7 +124,7 @@ test("a new view opens at the top; back and forward keep their scroll position",
   // Every chart loaded, so the page is full height before scrolling.
   await page.waitForLoadState("networkidle");
   await page.mouse.wheel(0, 1500);
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(500);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(200);
   const scrolled = await page.evaluate(() => scrollY);
   await header.getByRole("link", { name: "Sessions" }).click();
   await expect(sessions).toBeVisible();
