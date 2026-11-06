@@ -485,3 +485,9 @@ tr.faded {
     }
   }
 }
+
+/* One control height in the header, whatever the browser makes of a select or a bordered button,
+   so switching views never changes the header's height. */
+.top :is(nav a, select, button) {
+  height: 32px;
+}
