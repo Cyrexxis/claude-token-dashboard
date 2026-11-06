@@ -166,9 +166,9 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     return c.json(r);
   });
   v1.post("/plan-snapshots", async (c) => {
-    const points = recordSnapshots(db, await jsonBody(c.req.raw), Date.now());
-    for (const p of points) bus.emit("plan.snapshot", p);
-    return c.json({ stored: points.length });
+    const { stored, confirmed } = recordSnapshots(db, await jsonBody(c.req.raw), Date.now());
+    for (const p of [...stored, ...confirmed]) bus.emit("plan.snapshot", p);
+    return c.json({ stored: stored.length });
   });
   v1.post("/ingest/trigger", async (c) => {
     const body = (await jsonBody(c.req.raw)) as { sessionId?: unknown } | null;

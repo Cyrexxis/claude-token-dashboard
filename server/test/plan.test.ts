@@ -11,7 +11,7 @@ const rows = (db: ReturnType<typeof openDatabase>) =>
 
 test("stores each window", () => {
   const db = openDatabase(":memory:");
-  const out = recordSnapshots(
+  const { stored: out } = recordSnapshots(
     db,
     {
       windows: [
@@ -43,8 +43,19 @@ test("stores each window", () => {
 test("two sessions, same reading → one row, confirmed at the later reading", () => {
   const db = openDatabase(":memory:");
   const body = { windows: [{ kind: "five_hour", percentUsed: 12.5, resetsAt: RESET }] };
-  expect(recordSnapshots(db, body, NOW)).toHaveLength(1);
-  expect(recordSnapshots(db, { ...body, sessionCostUsd: 9 }, NOW + 1000)).toEqual([]);
+  expect(recordSnapshots(db, body, NOW).stored).toHaveLength(1);
+  expect(recordSnapshots(db, { ...body, sessionCostUsd: 9 }, NOW + 1000)).toEqual({
+    stored: [],
+    confirmed: [
+      {
+        ts: NOW,
+        seenTs: NOW + 1000,
+        kind: "five_hour",
+        percentUsed: 12.5,
+        resetsAt: Date.parse(RESET),
+      },
+    ],
+  });
   expect(rows(db)).toMatchObject([{ ts: NOW, seen_ts: NOW + 1000 }]);
   expect(getPlanSnapshots(db, NONE).points).toMatchObject([{ ts: NOW, seenTs: NOW + 1000 }]);
   // A row from before the range counts when it was confirmed inside it.

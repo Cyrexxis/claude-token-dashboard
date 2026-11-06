@@ -103,11 +103,15 @@ test("POST /plan-snapshots stores, emits plan.snapshot; invalid → 400; cross-s
     windows: [{ kind: "five_hour", percentUsed: 7, resetsAt: "2026-10-15T17:00:00Z" }],
   };
   const r = await post(body);
+  // Unchanged: nothing stored, but the open chart must still hear that the value held.
+  const again = await post(body);
   bus.off("plan.snapshot", on);
   expect(r.status).toBe(200);
   expect(await r.json()).toEqual({ stored: 1 });
+  expect(await again.json()).toEqual({ stored: 0 });
   expect(seen).toMatchObject([
     { kind: "five_hour", percentUsed: 7, resetsAt: Date.parse("2026-10-15T17:00:00Z") },
+    { kind: "five_hour", percentUsed: 7 },
   ]);
   const bad = await post({ windows: [] });
   expect(bad.status).toBe(400);

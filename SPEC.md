@@ -286,7 +286,7 @@ Every write carries an idempotency key (e.g. `session:turn:step`, `org:kind:rese
 ### 10.4 Live updates (SSE)
 `GET /api/v1/events` streams:
 - `usage.updated` `{sessionIds, from, to}`
-- `plan.snapshot` `{ts, kind, percentUsed, resetsAt}` (one per stored reading)
+- `plan.snapshot` `{ts, seenTs, kind, percentUsed, resetsAt}` (one per stored reading, and one per unchanged reading that moved `seen_ts`)
 - `session.started` / `session.ended` (not built; nothing needs them yet)
 - `prices.updated`, `ingest.status`
 
