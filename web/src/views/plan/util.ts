@@ -1,4 +1,4 @@
-import { TIMED_PLAN_KINDS, type TimedPlanKind } from "@td/shared";
+import { type PlanWindow, TIMED_PLAN_KINDS, type TimedPlanKind } from "@td/shared";
 import { useEffect, useState } from "react";
 
 const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "Weekly" };
@@ -6,6 +6,13 @@ const KIND_LABEL: Record<string, string> = { five_hour: "5-hour", seven_day: "We
 export const kindLabel = (kind: string) => KIND_LABEL[kind] ?? kind;
 
 export const pct = (n: number) => `${n.toFixed(1).replace(/\.0$/, "")} %`;
+
+/** Plan % from other products, a lower bound (whole percents, rounded down); null when the feature is off. */
+export const otherPct = (w: PlanWindow) => {
+  if (!w.other) return null;
+  const n = Math.floor(w.other.certain + (w.other.estimated ?? 0));
+  return n > 0 ? `≥ ${n} %` : "—";
+};
 
 export const when = (ms: number) =>
   new Date(ms).toLocaleString(undefined, {

@@ -6,6 +6,7 @@ import {
   estimatePercent,
   getPlanSnapshots,
   getPlanWindows,
+  otherUse,
   recordSnapshots,
   withPlanPercent,
 } from "../src/plan";
@@ -361,4 +362,47 @@ test("withPlanPercent: whole session per kind, cost outside the windows at the s
   expect(r?.planPercent?.seven_day).toBeNull(); // no weekly readings
   const [none] = withPlanPercent(db, [{ ...row, id: "nope" }], at("2026-10-15T16:00:00Z"));
   expect(none?.planPercent).toEqual({ five_hour: null, seven_day: null });
+});
+
+const M = 60_000;
+const pt = (min: number, percent: number, seenMin = min) => ({
+  ts: min * M,
+  seen: seenMin * M,
+  percent,
+});
+const rq = (min: number, cost = 0.4) => ({ ts: min * M, cost });
+
+test("otherUse: certain only when no request is near; never counts Claude Code jumps", () => {
+  // From window start (0) to the first reading: no requests → +3 is other.
+  expect(otherUse([pt(60, 3)], [], 0, null)).toEqual({ certain: 3, estimated: null });
+  // A big jump right after a request is Claude Code.
+  expect(otherUse([pt(60, 3), pt(61, 8)], [rq(61)], 0, null).certain).toBe(3);
+  // A request 8 minutes before a reading (inside the 10-minute margin) blocks both rises around it.
+  expect(otherUse([pt(60, 3), pt(90, 4)], [rq(52)], 0, null).certain).toBe(0);
+  // The request at 60 makes the first +3 Claude Code; the reading was seen until 80, so the margin
+  // starts at 70 and the +2 up to 120 is other.
+  expect(otherUse([pt(60, 3, 80), pt(120, 5)], [rq(60)], 0, null).certain).toBe(2);
+  // Falling percent never counts.
+  expect(otherUse([pt(60, 3), pt(90, 2)], [], 0, null).certain).toBe(3);
+});
+
+test("otherUse: estimate subtracts Claude Code's share after a pause, from 2 % on", () => {
+  // Chat 30 minutes, then one Claude Code request ($0.40 at $0.40 per 1 %): 4 - 1 = 3 % other.
+  const chat = [pt(60, 10), pt(91, 14)];
+  expect(otherUse(chat, [rq(90)], 0, 0.4)).toEqual({ certain: 10, estimated: 3 });
+  // Switch off: no estimate.
+  expect(otherUse(chat, [rq(90)], 0, null).estimated).toBeNull();
+  // Under 2 % left: ignored.
+  expect(otherUse([pt(60, 10), pt(91, 12)], [rq(90)], 0, 0.4).estimated).toBe(0);
+  // No 15-minute pause (steady work): nothing estimated.
+  const steady = [...[65, 70, 75, 80, 85].map((m) => rq(m, 0)), rq(90)];
+  expect(otherUse(chat, steady, 0, 0.4).estimated).toBe(0);
+});
+
+test("getPlanWindows adds other only when asked", () => {
+  const { db } = windowFixture();
+  const now = at("2026-10-15T16:00:00Z");
+  expect(getPlanWindows(db, NONE, now).current[0]?.other).toBeUndefined();
+  const w = getPlanWindows(db, NONE, now, { estimate: false }).current[0];
+  expect(w?.other).toEqual({ certain: 0, estimated: null }); // requests near both readings
 });

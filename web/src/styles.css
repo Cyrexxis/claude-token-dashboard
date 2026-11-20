@@ -496,3 +496,7 @@ tr.faded {
 .top :is(nav a, select, button) {
   height: 32px;
 }
+label.check {
+  display: block;
+  margin: 8px 0;
+}

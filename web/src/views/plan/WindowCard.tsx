@@ -1,6 +1,6 @@
 import type { PlanWindow } from "@td/shared";
 import { fmtDuration, fmtTokens, fmtUsd } from "../../format";
-import { dayTime, hourTick, kindLabel, pct, useNow } from "./util";
+import { dayTime, hourTick, kindLabel, otherPct, pct, useNow } from "./util";
 
 export function WindowCard({ w }: { w: PlanWindow }) {
   const now = useNow();
@@ -20,6 +20,9 @@ export function WindowCard({ w }: { w: PlanWindow }) {
           {fmtUsd(w.usdPerPercent)} · {fmtTokens(w.tokensPerPercent)} tokens per 1 % (Claude Code
           only)
         </div>
+      )}
+      {otherPct(w) !== null && (
+        <div className="sub">Other products: {otherPct(w) === "—" ? "none seen" : otherPct(w)}</div>
       )}
     </div>
   );

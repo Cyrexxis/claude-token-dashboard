@@ -215,10 +215,14 @@ export type PlanWindow = {
   usdPerPercent: number | null;
   tokensPerPercent: number | null;
   lowSignal: boolean;
+  /** Plan % used outside Claude Code on this machine, a lower bound; only when the feature is on.
+   *  `estimated` (null when its switch is off) is the extra from intervals with a Claude Code pause. */
+  other?: { certain: number; estimated: number | null };
   /** Spans with Claude Code requests: each active local day of a weekly window (clipped to it), or first → last request of a 5-hour one. */
   activity: [number, number][];
 };
 export type PlanWindows = { current: PlanWindow[]; past: PlanWindow[] };
+export type Settings = { otherProducts: boolean; otherEstimate: boolean };
 /** `server.json`: how the mod finds the server (SPEC §11.3). */
 export type ConnectionFile = {
   url: string;

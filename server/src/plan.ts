@@ -98,7 +98,50 @@ function wholeDays(start: number, end: number): [number, number] {
   return [from.getTime(), to.getTime() - 1];
 }
 
-export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows {
+const OTHER_MARGIN_MS = 10 * MINUTE; // the plan % can lag a request by a few minutes
+const OTHER_PAUSE_MS = 15 * MINUTE;
+const OTHER_MIN_ESTIMATE = 2; // whole-percent readings and rate noise hide anything smaller
+
+type Point = { ts: number; seen: number; percent: number };
+
+/** Plan % that rose while Claude Code (as seen in the transcripts) was not working; a lower bound.
+ *  certain: increases with no request from `margin` before the earlier reading up to the later one.
+ *  estimated (when `rate` is given): increases in intervals holding a pause of at least 15 minutes,
+ *  minus the interval's Claude Code cost at `rate` USD per 1 %, when at least 2 % is left. */
+export function otherUse(
+  points: Point[],
+  requests: { ts: number; cost: number }[],
+  startMs: number,
+  rate: number | null,
+): { certain: number; estimated: number | null } {
+  let certain = 0;
+  let estimated = 0;
+  let prev = { seen: startMs, percent: 0 };
+  for (const p of points) {
+    const rise = p.percent - prev.percent;
+    if (rise > 0) {
+      const near = requests.filter((q) => q.ts >= prev.seen - OTHER_MARGIN_MS && q.ts <= p.ts);
+      if (!near.length) certain += rise;
+      else if (rate) {
+        const inside = near.filter((q) => q.ts > prev.seen);
+        const marks = [prev.seen, ...inside.map((q) => q.ts), p.ts];
+        const pause = Math.max(...marks.slice(1).map((t, i) => t - (marks[i] as number)));
+        const left = rise - inside.reduce((n, q) => n + q.cost, 0) / rate;
+        if (pause >= OTHER_PAUSE_MS && left >= OTHER_MIN_ESTIMATE) estimated += left;
+      }
+    }
+    prev = p;
+  }
+  return { certain, estimated: rate === null ? null : estimated };
+}
+
+export function getPlanWindows(
+  db: Database,
+  r: Range,
+  now: number,
+  /** Adds `other` to each window; `estimate` adds its estimated part. */
+  other?: { estimate: boolean },
+): PlanWindows {
   const { fromMs, toMs } = dayBoundsMs(r);
   // In range, or still running (a current window ignores the range). Keeps "All time" the only unbounded case.
   const groups = db
@@ -126,6 +169,13 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
   const activeDays = db.query<{ day: string }, [number, number]>(
     `SELECT DISTINCT date(ts / 1000, 'unixepoch', 'localtime') day FROM requests
      WHERE ts >= ? AND ts <= ? ORDER BY day`,
+  );
+  const points = db.query<Point, [string, string, number]>(
+    `SELECT ts, COALESCE(seen_ts, ts) seen, percent_used percent FROM plan_snapshots
+     WHERE org_id = ? AND kind = ? AND resets_at = ? ORDER BY ts`,
+  );
+  const reqs = db.query<{ ts: number; cost: number }, [number, number]>(
+    "SELECT ts, COALESCE(cost_usd, 0) cost FROM requests WHERE ts >= ? AND ts <= ? ORDER BY ts",
   );
   const current: PlanWindow[] = [];
   const past: PlanWindow[] = [];
@@ -160,6 +210,16 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
       usdPerPercent: per(atPeak?.cost),
       tokensPerPercent: per(atPeak?.tokens),
       lowSignal: g.peak < LOW_SIGNAL_PERCENT,
+      ...(other && startMs !== null
+        ? {
+            other: otherUse(
+              points.all(ORG, g.kind, g.resets_at),
+              reqs.all(startMs - OTHER_MARGIN_MS, Math.min(g.resets_at, now)),
+              startMs,
+              other.estimate ? per(atPeak?.cost) : null,
+            ),
+          }
+        : {}),
       activity:
         startMs === null
           ? []

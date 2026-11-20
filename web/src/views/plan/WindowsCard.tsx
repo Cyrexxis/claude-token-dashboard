@@ -2,7 +2,7 @@ import type { PlanWindow } from "@td/shared";
 import { useState } from "react";
 import { fmtTokens, fmtUsd } from "../../format";
 import { fiveHourByWeek, weeklyByQuarter } from "../../plan-math";
-import { type Kind, kindLabel, pct, when } from "./util";
+import { type Kind, kindLabel, otherPct, pct, when } from "./util";
 import { WindowStrip } from "./WindowStrip";
 
 const CHAT_NOTE =
@@ -43,6 +43,7 @@ export function WindowsCard({
           );
   const page = pages[pageIdx];
   const rows = page ? page.windows : listed;
+  const showOther = all.some((w) => w.other);
   const unit = kind === "five_hour" ? "week" : "quarter";
   const quarter = (ms: number) => {
     const d = new Date(ms);
@@ -62,6 +63,7 @@ export function WindowsCard({
                 <th className="num">Cost</th>
                 <th className="num">$ per 1 %</th>
                 <th className="num">Tokens per 1 %</th>
+                {showOther && <th className="num">Other</th>}
               </tr>
             </thead>
             <tbody>
@@ -98,6 +100,7 @@ export function WindowsCard({
                     <td className="num">{fmtUsd(w.costUsd)}</td>
                     <td className="num">{perPct(w.usdPerPercent, fmtUsd)}</td>
                     <td className="num">{perPct(w.tokensPerPercent, fmtTokens)}</td>
+                    {showOther && <td className="num">{otherPct(w)}</td>}
                   </tr>
                 );
               })}
@@ -147,6 +150,8 @@ export function WindowsCard({
       <p className="muted note">
         Pick a window to show it in the charts and sessions. Per-1 % figures are Claude Code only,
         counted up to the last plan reading. {CHAT_NOTE}
+        {showOther &&
+          " Other: plan % that rose while Claude Code on this machine was not working, at least; each rise can be off by 1 %."}
       </p>
     </section>
   );

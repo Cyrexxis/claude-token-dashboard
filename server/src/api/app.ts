@@ -19,6 +19,7 @@ import { bus } from "../events";
 import { rekeyProjects } from "../ingest/project";
 import { getPlanSnapshots, getPlanWindows, recordSnapshots, withPlanPercent } from "../plan";
 import type { IngestService } from "../service";
+import { getSettings, saveSettings } from "../settings";
 import { SERVER_VERSION } from "../version";
 import { hostGuard, originGuard } from "./guards";
 import {
@@ -134,7 +135,13 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
     const [session] = withPlanPercent(db, [s.session], Date.now());
     return c.json({ ...s, session });
   });
-  v1.get("/plan/windows", (c) => c.json(getPlanWindows(db, parseRange(c.req.query()), Date.now())));
+  v1.get("/plan/windows", (c) => {
+    const s = getSettings(db);
+    const other = s.otherProducts ? { estimate: s.otherEstimate } : undefined;
+    return c.json(getPlanWindows(db, parseRange(c.req.query()), Date.now(), other));
+  });
+  v1.get("/settings", (c) => c.json(getSettings(db)));
+  v1.put("/settings", async (c) => c.json(saveSettings(db, await jsonBody(c.req.raw))));
   v1.get("/plan/sessions", (c) => {
     const q = c.req.query();
     return c.json(listWindowSessions(db, Number(q.fromMs), Number(q.toMs)));
