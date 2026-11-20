@@ -67,7 +67,7 @@ export function SessionTable({
                 // Mouse convenience; a click on the link itself navigates on its own.
                 onClick={(e) => (e.target as Element).closest("a") || open()}
               >
-                <td>
+                <td className="wrap">
                   <a href={`#/sessions/${encodeURIComponent(s.id)}`}>
                     {s.title ?? s.id.slice(0, 8)}
                   </a>

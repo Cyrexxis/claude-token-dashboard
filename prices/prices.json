@@ -1,8 +1,40 @@
 {
   "schema": 1,
-  "updated": "2026-11-01",
+  "updated": "2026-11-20",
   "currency": "USD",
   "models": [
+    {
+      "id": "claude-fable-5-2",
+      "match": [
+        "claude-fable-5-2",
+        "claude-fable-5-2-*",
+        "claude-mythos-5-2",
+        "claude-mythos-5-2-*"
+      ],
+      "notes": "quoted; listed before claude-fable-5, whose dated-id pattern claude-fable-5-2* also matches this id",
+      "periods": [
+        {
+          "effective_from": null,
+          "effective_to": null,
+          "per_mtok": {
+            "input": 8,
+            "output": 40,
+            "cache_read": 0.2,
+            "cache_write_5m": 10,
+            "cache_write_1h": 16
+          },
+          "long_context": null,
+          "modifiers": {
+            "speed": {
+              "fast": {
+                "multiplier": 2
+              }
+            },
+            "inference_geo": {}
+          }
+        }
+      ]
+    },
     {
       "id": "claude-fable-5-1",
       "match": [

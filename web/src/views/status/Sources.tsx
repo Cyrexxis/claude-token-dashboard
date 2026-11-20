@@ -17,6 +17,9 @@ export function Sources({ status }: { status: StatusData }) {
     mutationFn: (id: number) => api(`/sources/${id}/rescan`, undefined, { method: "POST" }),
     onError: () => setClickedAt(null), // no run will follow a failed POST
   });
+  const rekey = useMutation({
+    mutationFn: () => api<{ sessions: number }>("/projects/rekey", undefined, { method: "POST" }),
+  });
   return (
     <section className="card">
       <h2>Sources</h2>
@@ -66,6 +69,17 @@ export function Sources({ status }: { status: StatusData }) {
           </tbody>
         </table>
       </div>
+      <p className="muted">
+        Groups stored sessions by git repo again and turns Windows paths into WSL paths. Run it
+        after a <code>git init</code> in a folder you already used with Claude Code.
+      </p>
+      {rekey.error && <p className="error">{rekey.error.message}</p>}
+      <button type="button" disabled={rekey.isPending} onClick={() => rekey.mutate()}>
+        Re-detect projects
+      </button>
+      {rekey.data && (
+        <span className="muted"> Updated {rekey.data.sessions.toLocaleString()} sessions.</span>
+      )}
     </section>
   );
 }

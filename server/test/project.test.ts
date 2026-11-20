@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db/database";
-import { ensureProjectKeys, projectKey, repoRoot } from "../src/ingest/project";
+import { projectKey, rekeyProjects, repoRoot, toLocal } from "../src/ingest/project";
 import { one } from "./db-helpers";
 
 const git = (cwd: string, ...args: string[]) =>
@@ -45,17 +45,44 @@ test("repoRoot: repo, subfolder, nested and sibling worktrees, deleted worktree,
   rmSync(base, { recursive: true, force: true });
 });
 
-test("ensureProjectKeys re-keys old sessions once and rebuilds rollups", () => {
+test("projectKey and toLocal turn Windows paths into WSL paths", () => {
+  expect(toLocal("V:\\music\\x")).toBe("/mnt/v/music/x");
+  expect(projectKey("C:\\nowhere-td-test", null)).toBe("/mnt/c/nowhere-td-test");
+});
+
+test("rekeyProjects re-keys sessions on every call and rebuilds rollups", () => {
   const { base, repo } = fixture();
   const db = openDatabase(":memory:");
   const wt = join(base, "repo-sibling");
   db.run("insert into sessions (id, project, cwd) values ('s1', '-enc-sibling', ?)", [wt]);
+  db.run(
+    "insert into sessions (id, project, cwd) values ('s2', 'C:\\nowhere-td-test', 'C:\\nowhere-td-test')",
+  );
   db.run("insert into requests (message_id, session_id, ts, model) values ('r1', 's1', 0, 'm')");
-  ensureProjectKeys(db);
-  expect(one(db, "select project from sessions")).toEqual({ project: repo });
+  expect(rekeyProjects(db).sort()).toEqual(["s1", "s2"]);
+  expect(one(db, "select project from sessions where id = 's1'")).toEqual({ project: repo });
+  expect(one(db, "select project, cwd from sessions where id = 's2'")).toEqual({
+    project: "/mnt/c/nowhere-td-test",
+    cwd: "/mnt/c/nowhere-td-test",
+  });
   expect(one(db, "select project from daily_rollups")).toEqual({ project: repo });
-  db.run("update sessions set project = 'kept'");
-  ensureProjectKeys(db);
-  expect(one(db, "select project from sessions")).toEqual({ project: "kept" });
+  db.run("update sessions set project = 'stale' where id = 's1'");
+  expect(rekeyProjects(db)).toEqual(["s1"]);
+  expect(rekeyProjects(db)).toEqual([]);
+  rmSync(base, { recursive: true, force: true });
+});
+
+test("rekeyProjects keeps the saved project of a deleted folder, in WSL form", () => {
+  const { base, repo } = fixture();
+  const db = openDatabase(":memory:");
+  db.run("insert into sessions (id, project, cwd) values ('s1', ?, ?)", [repo, join(repo, "sub")]);
+  db.run("insert into sessions (id, project, cwd) values ('s2', 'Q:\\gone', 'Q:\\gone\\sub')");
+  rmSync(repo, { recursive: true, force: true });
+  expect(rekeyProjects(db)).toEqual(["s2"]);
+  expect(one(db, "select project from sessions where id = 's1'")).toEqual({ project: repo });
+  expect(one(db, "select project, cwd from sessions where id = 's2'")).toEqual({
+    project: "/mnt/q/gone",
+    cwd: "/mnt/q/gone/sub",
+  });
   rmSync(base, { recursive: true, force: true });
 });

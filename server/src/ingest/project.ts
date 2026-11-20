@@ -1,13 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { rebuildRollups } from "../rollups";
 
-// shortcut: never invalidated, so a `git init` after a dir's first session keeps the cwd key until restart.
+// Cleared by rekeyProjects, so a `git init` after a dir's first session is picked up on demand.
 const cache = new Map<string, string | null>();
 
 /** A Windows path seen from WSL: C:\Users\me\x -> /mnt/c/Users/me/x. */
-function toLocal(p: string): string {
+export function toLocal(p: string): string {
   const m = process.platform === "win32" ? null : /^([A-Za-z]):[\\/](.*)$/.exec(p);
   return m ? `/mnt/${m[1]?.toLowerCase()}/${m[2]?.replaceAll("\\", "/")}` : p;
 }
@@ -35,20 +35,29 @@ export function repoRoot(cwd: string): string | null {
   return cache.get(cwd) ?? null;
 }
 
-/** Project key of a session: its repo, else its cwd, else Claude's encoded project folder. */
+/** Project key of a session: its repo, else its (WSL) cwd, else Claude's encoded project folder. */
 export const projectKey = (cwd: string | null, folder: string | null): string | null =>
-  (cwd && repoRoot(cwd)) || cwd || folder;
+  (cwd && (repoRoot(cwd) ?? toLocal(cwd))) || folder;
 
-/** Once: re-key sessions stored under Claude's encoded folder names, then rebuild the rollups. */
-export function ensureProjectKeys(db: Database): void {
-  if (db.query("SELECT 1 FROM settings WHERE key = 'project_keys'").get()) return;
+/** On demand: re-detect every session's repo and store WSL paths, then rebuild the rollups. */
+export function rekeyProjects(db: Database): string[] {
+  cache.clear();
   const rows = db
-    .query<{ cwd: string }, []>("SELECT DISTINCT cwd FROM sessions WHERE cwd IS NOT NULL")
+    .query<{ id: string; cwd: string; project: string | null }, []>(
+      "SELECT id, cwd, project FROM sessions WHERE cwd IS NOT NULL",
+    )
     .all();
+  // A deleted folder (or unmounted drive) can't be re-detected: keep its saved project, in WSL form.
+  const next = (r: (typeof rows)[number]) =>
+    r.project && !existsSync(toLocal(r.cwd)) ? toLocal(r.project) : projectKey(r.cwd, null);
+  const changed = rows
+    .map((r) => ({ ...r, next: next(r) }))
+    .filter((r) => toLocal(r.cwd) !== r.cwd || r.next !== r.project);
+  if (changed.length === 0) return [];
   db.transaction(() => {
-    const set = db.query("UPDATE sessions SET project = ? WHERE cwd = ?");
-    for (const { cwd } of rows) set.run(projectKey(cwd, null), cwd);
+    const set = db.query("UPDATE sessions SET project = ?, cwd = ? WHERE id = ?");
+    for (const r of changed) set.run(r.next, toLocal(r.cwd), r.id);
     rebuildRollups(db, "all");
-    db.run("INSERT INTO settings (key, value) VALUES ('project_keys', 'git')");
   })();
+  return changed.map((r) => r.id);
 }

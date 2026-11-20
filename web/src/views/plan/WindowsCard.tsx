@@ -131,7 +131,8 @@ export function WindowsCard({
               {kind === "five_hour"
                 ? `${when(page.fromMs)} → ${when(page.toMs)}`
                 : quarter(page.fromMs)}
-              {page.current && " (current)"} · {rows.length} windows
+              {page.current && " (current)"} · {rows.length}{" "}
+              {rows.length === 1 ? "window" : "windows"}
             </span>
             <button
               type="button"

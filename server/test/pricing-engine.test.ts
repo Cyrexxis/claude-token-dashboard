@@ -109,6 +109,9 @@ test("dated ids match the right family", () => {
   expect(periodId("claude-sonnet-4-20250514")).toBe("claude-sonnet-4@release@shipped");
   expect(periodId("claude-3-5-haiku-20241022")).toBe("claude-3-5-haiku@release@shipped");
   expect(periodId("claude-mythos-5-1")).toBe("claude-fable-5-1@release@shipped");
+  expect(periodId("claude-fable-5-2")).toBe("claude-fable-5-2@release@shipped");
+  expect(periodId("claude-mythos-5-2")).toBe("claude-fable-5-2@release@shipped");
+  expect(periodId("claude-fable-5-20260101")).toBe("claude-fable-5@release@shipped");
 });
 
 test("period boundary: effective_to is exclusive", () => {

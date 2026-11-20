@@ -366,7 +366,8 @@ const SESSION_SELECT = `SELECT s.id, COALESCE(s.title, s.ai_title) title, s.proj
   FROM sessions s LEFT JOIN sources so ON so.id = s.source_id`;
 const SESSION_WHERE = `($fromMs IS NULL OR s.last_ts >= $fromMs) AND ($toMs IS NULL OR s.first_ts < $toMs)
   AND ($q IS NULL OR instr(lower(COALESCE(s.title, '')), $q) > 0 OR instr(lower(COALESCE(s.ai_title, '')), $q) > 0
-    OR instr(lower(COALESCE(s.project, '')), $q) > 0 OR instr(lower(s.id), $q) > 0)`;
+    OR instr(lower(COALESCE(s.project, '')), $q) > 0 OR instr(lower(s.id), $q) > 0)
+  AND EXISTS (SELECT 1 FROM requests r WHERE r.session_id = s.id)`; // sessions with no requests are noise
 
 type Agg = Tokens & {
   sessionId: string;

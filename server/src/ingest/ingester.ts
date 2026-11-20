@@ -6,7 +6,7 @@ import { bus } from "../events";
 import { type PriceTable, priceRequest } from "../pricing/engine";
 import { rebuildRollups } from "../rollups";
 import { type Parsed, parseLine, type Usage } from "./parse";
-import { projectKey } from "./project";
+import { projectKey, toLocal } from "./project";
 import { planRead, readLines, statFile } from "./reader";
 
 export type Root = {
@@ -338,7 +338,7 @@ function writeSession(
     id: p.sessionId,
     sourceId,
     project: projectKey(p.cwd, project),
-    cwd: p.cwd,
+    cwd: p.cwd && toLocal(p.cwd),
     entrypoint: p.entrypoint,
     version: p.version,
     title: m?.title ?? null,

@@ -16,6 +16,7 @@ import { serveStatic } from "hono/bun";
 import { streamSSE } from "hono/streaming";
 import type { Config } from "../config";
 import { bus } from "../events";
+import { rekeyProjects } from "../ingest/project";
 import { getPlanSnapshots, getPlanWindows, recordSnapshots } from "../plan";
 import type { IngestService } from "../service";
 import { SERVER_VERSION } from "../version";
@@ -179,6 +180,11 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
       .ingestSession(id)
       .catch((e) => console.error(`ingest trigger ${id} failed: ${errorMessage(e)}`));
     return c.json({ queued: true }, 202);
+  });
+  v1.post("/projects/rekey", (c) => {
+    const sessionIds = rekeyProjects(db);
+    if (sessionIds.length) bus.emit("usage.updated", { sessionIds, from: 0, to: Date.now() });
+    return c.json({ sessions: sessionIds.length });
   });
   v1.post("/sources/:id/rescan", (c) => {
     const id = Number(c.req.param("id"));
