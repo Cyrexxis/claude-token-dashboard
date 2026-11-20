@@ -97,6 +97,8 @@ export type SessionRow = {
   costUsd: number;
   unpricedRequests: number;
   agents: number;
+  /** Estimated plan % of the whole session, per window kind (session list and detail only); null without a rated window. */
+  planPercent?: { five_hour: number | null; seven_day: number | null };
 };
 export type SessionList = { total: number; items: SessionRow[] };
 

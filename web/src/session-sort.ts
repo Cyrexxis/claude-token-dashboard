@@ -1,5 +1,5 @@
 import { type SessionRow, totalTokens } from "@td/shared";
-import { sourceLabel } from "./format";
+import { fmtPercent, sourceLabel } from "./format";
 
 export type ColId =
   | "title"
@@ -9,13 +9,18 @@ export type ColId =
   | "lastActive"
   | "duration"
   | "tokens"
-  | "cost";
+  | "cost"
+  | "fiveHour"
+  | "weekly"
+  | "estimate";
 export type Col = {
   id: ColId;
   label: string;
   /** "text" sorts A→Z first; "num" is right-aligned; null is a date (newest first, left-aligned). */
   align: "num" | "text" | null;
   key: (s: SessionRow) => string | number;
+  /** Cell text, when it differs from the sort key. */
+  show?: (s: SessionRow) => string;
 };
 
 export const duration = (s: SessionRow) =>
@@ -37,8 +42,30 @@ export const COLS: Col[] = [
   { id: "cost", label: "Cost", align: "num", key: (s) => s.costUsd },
 ];
 
-export function sortSessions(items: SessionRow[], col: ColId, desc: boolean): SessionRow[] {
-  const key = COLS.find((c) => c.id === col)?.key;
+const pct = (id: ColId, label: string, of: (s: SessionRow) => number | null | undefined): Col => ({
+  id,
+  label,
+  align: "num",
+  key: (s) => of(s) ?? -1,
+  show: (s) => fmtPercent(of(s)),
+});
+
+/** Whole-session 5-hour and weekly estimates; or, with a window's USD per 1 %, its part of each session. */
+export const percentCols = (usdPerPercent?: number | null): Col[] =>
+  usdPerPercent === undefined
+    ? [
+        pct("fiveHour", "5h %", (s) => s.planPercent?.five_hour),
+        pct("weekly", "Week %", (s) => s.planPercent?.seven_day),
+      ]
+    : [pct("estimate", "Est. %", (s) => (usdPerPercent ? s.costUsd / usdPerPercent : null))];
+
+export function sortSessions(
+  items: SessionRow[],
+  col: ColId,
+  desc: boolean,
+  cols: Col[] = COLS,
+): SessionRow[] {
+  const key = cols.find((c) => c.id === col)?.key;
   if (!key) return items;
   return [...items].sort((a, b) => {
     const x = key(a);

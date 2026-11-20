@@ -72,6 +72,10 @@ export function Sessions({ range, id }: ViewProps & { id?: string }) {
         </div>
         {list.error && <p className="error">{list.error.message}</p>}
         <SessionTable items={list.data?.items ?? []} selected={shown} />
+        <p className="muted note">
+          5h % and Week % estimate the plan use of each whole session: each part at the $ per 1 % of
+          the window it ran in. claude.ai chat also moves plan %, so they are rough figures.
+        </p>
         {list.data && total === 0 && <p className="muted empty">No sessions in this period.</p>}
         <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
           <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>

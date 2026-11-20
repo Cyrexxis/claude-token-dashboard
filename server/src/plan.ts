@@ -1,5 +1,12 @@
 import type { Database } from "bun:sqlite";
-import type { PlanSnapshotPoint, PlanSnapshots, PlanWindow, PlanWindows } from "@td/shared";
+import {
+  localDay,
+  type PlanSnapshotPoint,
+  type PlanSnapshots,
+  type PlanWindow,
+  type PlanWindows,
+  type SessionRow,
+} from "@td/shared";
 import { BadRequest, dayBoundsMs, type Range, toDate } from "./api/queries";
 
 const ORG = "default"; // single account (user decision); the column keeps room for more
@@ -169,6 +176,67 @@ export function getPlanWindows(db: Database, r: Range, now: number): PlanWindows
     });
   }
   return { current, past };
+}
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
+};
+
+/** Plan % of `total` USD: each window's part at that window's $ per 1 %; parts without a rate (and
+ *  cost outside every window) at the median rate of the rated parts; null when no part is rated. */
+export function estimatePercent(total: number, parts: { cost: number; rate: number | null }[]) {
+  const rates = parts.flatMap((p) => (p.rate ? [p.rate] : []));
+  if (!rates.length) return null;
+  const fallback = median(rates);
+  const covered = parts.reduce((n, p) => n + p.cost, 0);
+  const inWindows = parts.reduce((n, p) => n + p.cost / (p.rate || fallback), 0);
+  return inWindows + Math.max(0, total - covered) / fallback;
+}
+
+/** Adds `planPercent` (5-hour and weekly) for each whole session. */
+export function withPlanPercent(db: Database, rows: SessionRow[], now: number): SessionRow[] {
+  const ts = rows.flatMap((r) =>
+    r.firstTs === null || r.lastTs === null ? [] : [r.firstTs, r.lastTs],
+  );
+  if (!ts.length)
+    return rows.map((r) => ({ ...r, planPercent: { five_hour: null, seven_day: null } }));
+  // Every window that can hold one of these requests resets within 7 days after it.
+  const range = {
+    from: localDay(new Date(Math.min(...ts))),
+    to: localDay(new Date(Math.max(...ts) + 7 * 24 * HOUR)),
+  };
+  const { current, past } = getPlanWindows(db, range, now);
+  const windows = [...current, ...past].filter(
+    (w) => w.startMs !== null && (w.kind === "five_hour" || w.kind === "seven_day"),
+  );
+  const costs = db
+    .query<{ sid: string; i: number; cost: number }, [string, string]>(
+      `SELECT r.session_id sid, CAST(w.key AS INTEGER) i, TOTAL(r.cost_usd) cost
+       FROM requests r JOIN json_each(?2) w
+         ON r.ts >= json_extract(w.value, '$[0]') AND r.ts < json_extract(w.value, '$[1]')
+       WHERE r.session_id IN (SELECT value FROM json_each(?1)) GROUP BY sid, i`,
+    )
+    .all(
+      JSON.stringify(rows.map((r) => r.id)),
+      JSON.stringify(windows.map((w) => [w.startMs, w.resetsAt])),
+    );
+  const parts = new Map<string, { kind: string; cost: number; rate: number | null }[]>();
+  for (const c of costs) {
+    const w = windows[c.i] as PlanWindow;
+    const list = parts.get(c.sid) ?? [];
+    list.push({ kind: w.kind, cost: c.cost, rate: w.usdPerPercent || null });
+    parts.set(c.sid, list);
+  }
+  return rows.map((r) => {
+    const of = (kind: string) =>
+      estimatePercent(
+        r.costUsd,
+        (parts.get(r.id) ?? []).filter((p) => p.kind === kind),
+      );
+    return { ...r, planPercent: { five_hour: of("five_hour"), seven_day: of("seven_day") } };
+  });
 }
 
 export function getPlanSnapshots(db: Database, r: Range): PlanSnapshots {

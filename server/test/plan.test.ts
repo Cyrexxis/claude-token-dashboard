@@ -1,7 +1,14 @@
 import { expect, test } from "bun:test";
+import type { SessionRow } from "@td/shared";
 import { BadRequest } from "../src/api/queries";
 import { openDatabase } from "../src/db/database";
-import { getPlanSnapshots, getPlanWindows, recordSnapshots } from "../src/plan";
+import {
+  estimatePercent,
+  getPlanSnapshots,
+  getPlanWindows,
+  recordSnapshots,
+  withPlanPercent,
+} from "../src/plan";
 import { all, insertRequest } from "./db-helpers";
 
 const NOW = Date.parse("2026-10-15T12:00:00Z");
@@ -325,4 +332,33 @@ test("past windows newest first", () => {
   const past = getPlanWindows(db, NONE, at("2026-10-13T00:00:00Z")).past;
   expect(past.map((w) => new Date(w.resetsAt).getUTCDate())).toEqual([12, 11, 10]);
   expect(past[0]?.startMs).toBe(at("2026-10-12T17:00:00Z") - 5 * H);
+});
+
+test("estimatePercent: own rate per window, median for unrated and uncovered cost, null without a rate", () => {
+  const parts = [
+    { cost: 1, rate: 0.5 }, // 2 %
+    { cost: 3, rate: 1.5 }, // 2 %
+    { cost: 2, rate: null }, // at the median 1.0: 2 %
+  ];
+  expect(estimatePercent(6, parts)).toBe(6);
+  expect(estimatePercent(9, parts)).toBe(9); // 3 USD outside every window: 3 % more
+  expect(estimatePercent(2, [{ cost: 2, rate: null }])).toBeNull();
+  expect(estimatePercent(2, [])).toBeNull();
+});
+
+test("withPlanPercent: whole session per kind, cost outside the windows at the session's median rate", () => {
+  const { db } = windowFixture(); // one 5-hour window, 0.05 USD per 1 %
+  db.run("update requests set session_id = 's1' where ts >= ?", [at("2026-10-15T12:30:00Z")]);
+  db.run("update requests set session_id = 's1' where cost_usd = 50"); // before the window
+  const row = {
+    id: "s1",
+    firstTs: at("2026-10-15T11:59:00Z"),
+    lastTs: at("2026-10-15T15:00:00Z"),
+    costUsd: 54,
+  } as SessionRow;
+  const [r] = withPlanPercent(db, [row], at("2026-10-15T16:00:00Z"));
+  expect(r?.planPercent?.five_hour).toBeCloseTo(54 / 0.05);
+  expect(r?.planPercent?.seven_day).toBeNull(); // no weekly readings
+  const [none] = withPlanPercent(db, [{ ...row, id: "nope" }], at("2026-10-15T16:00:00Z"));
+  expect(none?.planPercent).toEqual({ five_hour: null, seven_day: null });
 });

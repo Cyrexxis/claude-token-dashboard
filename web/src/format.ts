@@ -18,6 +18,10 @@ export function fmtUsd(n: number | null): string {
   return usd2.format(n);
 }
 
+/** Estimated plan percent: one decimal below 10 %. */
+export const fmtPercent = (n: number | null | undefined) =>
+  n == null ? "—" : `${n.toFixed(n < 10 ? 1 : 0)} %`;
+
 export function fmtDuration(ms: number): string {
   const s = Math.round(ms / 1000);
   const d = Math.floor(s / 86400);

@@ -1,7 +1,7 @@
 import { type SessionRow, totalTokens } from "@td/shared";
 import { useState } from "react";
 import { fmtDuration, fmtTokens, fmtUsd, sourceLabel } from "../format";
-import { COLS, type ColId, duration, sortSessions } from "../session-sort";
+import { COLS, type ColId, duration, percentCols, sortSessions } from "../session-sort";
 
 const when = (ms: number | null) => (ms === null ? "—" : new Date(ms).toLocaleString());
 
@@ -10,18 +10,23 @@ export function SessionTable({
   items,
   sortable,
   selected,
+  usdPerPercent,
 }: {
   items: SessionRow[];
   sortable?: boolean;
   selected?: string;
+  /** A plan window's rate: one "Est. %" column for the window's part; omitted, whole-session 5h and weekly. */
+  usdPerPercent?: number | null;
 }) {
+  const extra = percentCols(usdPerPercent);
+  const cols = [...COLS, ...extra];
   const [sort, setSort] = useState<{ col: ColId; desc: boolean }>({
     col: "lastActive",
     desc: true,
   });
-  const rows = sortable ? sortSessions(items, sort.col, sort.desc) : items;
+  const rows = sortable ? sortSessions(items, sort.col, sort.desc, cols) : items;
   // Text columns start A→Z, numbers and dates start largest/newest first.
-  const pick = (c: (typeof COLS)[number]) =>
+  const pick = (c: (typeof cols)[number]) =>
     setSort(
       c.id === sort.col ? { col: c.id, desc: !sort.desc } : { col: c.id, desc: c.align !== "text" },
     );
@@ -30,7 +35,7 @@ export function SessionTable({
       <table>
         <thead>
           <tr>
-            {COLS.map((c) => (
+            {cols.map((c) => (
               <th
                 key={c.label}
                 className={c.align === "num" ? "num" : undefined}
@@ -84,6 +89,11 @@ export function SessionTable({
                     <span title={`${s.unpricedRequests} unpriced requests`}> + unpriced</span>
                   )}
                 </td>
+                {extra.map((c) => (
+                  <td key={c.id} className="num">
+                    {c.show?.(s)}
+                  </td>
+                ))}
               </tr>
             );
           })}

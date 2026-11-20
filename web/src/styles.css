@@ -239,7 +239,7 @@ th.num {
 /* Long free text (session titles, paths) wraps so the number columns stay in view. */
 td.wrap {
   white-space: normal;
-  min-width: 12rem;
+  min-width: 10rem;
 }
 tr.link {
   cursor: pointer;

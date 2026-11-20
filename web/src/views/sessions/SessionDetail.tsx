@@ -14,7 +14,7 @@ import { api, HttpError } from "../../api";
 import { axisProps, SERIES_VARS, tooltipStyle } from "../../chart-theme";
 import { ChartCard } from "../../components/ChartCard";
 import { StatTile } from "../../components/StatTile";
-import { fmtDuration, fmtTokens, fmtUsd, sourceLabel } from "../../format";
+import { fmtDuration, fmtPercent, fmtTokens, fmtUsd, sourceLabel } from "../../format";
 import { SessionSeries } from "./SessionSeries";
 
 const CACHE_SERIES = [
@@ -82,6 +82,11 @@ export function SessionDetail({ id }: { id: string }) {
           label="API-equivalent cost"
           value={fmtUsd(s.costUsd)}
           sub={s.unpricedRequests ? `${s.unpricedRequests} unpriced requests` : undefined}
+        />
+        <StatTile
+          label="Est. plan use"
+          value={fmtPercent(s.planPercent?.five_hour)}
+          sub={`of 5-hour · ${fmtPercent(s.planPercent?.seven_day)} of weekly`}
         />
         {costStateUsd !== null && (
           // cost-state is written at process exit, so a running session's latest process is missing:

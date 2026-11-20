@@ -15,9 +15,11 @@ export function WindowSessions({ w }: { w: PlanWindow }) {
   if (!list.data.items.length) return <p className="muted empty">No sessions in this window.</p>;
   return (
     <>
-      <SessionTable items={list.data.items} sortable />
+      <SessionTable items={list.data.items} sortable usdPerPercent={w.usdPerPercent ?? null} />
       <p className="muted note">
-        Tokens and cost count only requests inside the window; duration is the whole session.
+        Tokens and cost count only requests inside the window; duration is the whole session. Est. %
+        is that cost at this window's $ per 1 %; claude.ai chat also moves plan %, so it is a rough
+        figure.
       </p>
     </>
   );

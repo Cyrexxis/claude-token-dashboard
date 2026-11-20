@@ -17,7 +17,7 @@ import { streamSSE } from "hono/streaming";
 import type { Config } from "../config";
 import { bus } from "../events";
 import { rekeyProjects } from "../ingest/project";
-import { getPlanSnapshots, getPlanWindows, recordSnapshots } from "../plan";
+import { getPlanSnapshots, getPlanWindows, recordSnapshots, withPlanPercent } from "../plan";
 import type { IngestService } from "../service";
 import { SERVER_VERSION } from "../version";
 import { hostGuard, originGuard } from "./guards";
@@ -120,15 +120,19 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
   });
   v1.get("/sessions", (c) => {
     const q = c.req.query();
-    return c.json(
-      listSessions(db, { ...parseRange(q), q: q.q, limit: int(q.limit), offset: int(q.offset) }),
-    );
+    const list = listSessions(db, {
+      ...parseRange(q),
+      q: q.q,
+      limit: int(q.limit),
+      offset: int(q.offset),
+    });
+    return c.json({ ...list, items: withPlanPercent(db, list.items, Date.now()) });
   });
   v1.get("/sessions/:id", (c) => {
     const s = getSession(db, c.req.param("id"));
-    return s
-      ? c.json(s)
-      : c.json<ApiError>({ error: "not_found", message: "no such session" }, 404);
+    if (!s) return c.json<ApiError>({ error: "not_found", message: "no such session" }, 404);
+    const [session] = withPlanPercent(db, [s.session], Date.now());
+    return c.json({ ...s, session });
   });
   v1.get("/plan/windows", (c) => c.json(getPlanWindows(db, parseRange(c.req.query()), Date.now())));
   v1.get("/plan/sessions", (c) => {
