@@ -1,5 +1,6 @@
 {
   "name": "token-dashboard",
   "owner": { "name": "Cyrexxis" },
+  "description": "Token Dashboard: local Claude Code token, cost and plan usage dashboard",
   "plugins": [{ "name": "token-dashboard", "source": "./plugin" }]
 }

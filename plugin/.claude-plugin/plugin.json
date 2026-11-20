@@ -1,5 +1,9 @@
 {
   "name": "token-dashboard",
   "version": "0.3.0",
-  "description": "Sends Claude Code usage and plan readings to the local Token Dashboard"
+  "description": "Sends Claude Code usage and plan readings to the local Token Dashboard",
+  "author": { "name": "Cyrexxis" },
+  "homepage": "https://github.com/Cyrexxis/claude-token-dashboard",
+  "repository": "https://github.com/Cyrexxis/claude-token-dashboard",
+  "license": "MIT"
 }
