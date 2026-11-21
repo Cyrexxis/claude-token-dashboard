@@ -97,6 +97,26 @@ test("unknown command exits 2", () => {
   for (const c of ["setup", "update", "uninstall"]) expect(r.err).toContain(c);
 });
 
+test("version and help print to stdout and exit 0", () => {
+  const e = env();
+  const v = cli(e, "--version");
+  expect(v.code).toBe(0);
+  expect(v.out.trim()).toMatch(/^\d+\.\d+\.\d+/);
+  const h = cli(e, "--help");
+  expect(h.code).toBe(0);
+  expect(h.out).toContain("usage: token-dashboard");
+  expect(h.out).toContain("status");
+});
+
+test("status exits 1 when no dashboard is running", () => {
+  const busy = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+  const port = String(busy.port);
+  busy.stop(true); // a port that was just free
+  const r = cli({ ...env(), TD_PORT: port }, "status");
+  expect(r.code).toBe(1);
+  expect(r.out).toContain(`not running at http://127.0.0.1:${port}`);
+});
+
 test("serve writes every listed connection file", async () => {
   const e = env();
   const dir = dirname(e.TD_CONFIG);
@@ -282,6 +302,12 @@ test("serve answers health while it scans, then serves the API", async () => {
     const get = (path: string) => fetch(`http://127.0.0.1:${port}${path}`);
     expect(await (await get("/api/health")).json()).toMatchObject({ ok: true, protocol: 1 });
     expect(await (await get("/api/v1/summary")).json()).toMatchObject({ requests: 3 });
+    const st = Bun.spawnSync(["bun", "server/src/cli.ts", "status"], {
+      env: { ...process.env, ...e, TD_PORT: port },
+    });
+    expect(st.exitCode).toBe(0);
+    expect(st.stdout.toString()).toContain(`running at http://127.0.0.1:${port}`);
+    expect(st.stdout.toString()).toContain("requests stored: 3");
   } finally {
     child.kill();
     await child.exited;

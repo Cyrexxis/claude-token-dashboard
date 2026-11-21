@@ -43,6 +43,7 @@ export type AppDeps = {
   ingest: IngestService;
   startedAt: number;
   webDir: string | null;
+  webFiles?: Record<string, string> | null;
 };
 
 const PING_MS = 25_000;
@@ -67,7 +68,7 @@ async function jsonBody(req: Request): Promise<unknown> {
 }
 const int = (v: string | undefined) => (v === undefined ? undefined : Number(v));
 
-export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): Hono {
+export function createApp({ db, config, ingest, startedAt, webDir, webFiles }: AppDeps): Hono {
   const app = new Hono();
   app.use(hostGuard(config.port), originGuard(config.port));
 
@@ -225,7 +226,13 @@ export function createApp({ db, config, ingest, startedAt, webDir }: AppDeps): H
   );
   app.route("/api/v1", v1);
 
-  if (webDir && existsSync(join(webDir, "index.html"))) app.use("*", serveStatic({ root: webDir }));
+  if (webFiles) {
+    app.get("*", (c) => {
+      const p = webFiles[c.req.path === "/" ? "/index.html" : c.req.path];
+      return p ? new Response(Bun.file(p)) : c.notFound();
+    });
+  } else if (webDir && existsSync(join(webDir, "index.html")))
+    app.use("*", serveStatic({ root: webDir }));
   else app.get("/", (c) => c.text("UI not built: run bun run build:web", 503));
 
   return app;

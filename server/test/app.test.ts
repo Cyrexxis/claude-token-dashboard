@@ -13,7 +13,7 @@ import { insertRequest } from "./db-helpers";
 
 const HOST = "127.0.0.1:47811";
 
-function setup(webDir: string | null = null) {
+function setup(webDir: string | null = null, webFiles: Record<string, string> | null = null) {
   const home = mkdtempSync(join(tmpdir(), "td-app-"));
   const config = loadConfig({
     HOME: home,
@@ -44,7 +44,7 @@ function setup(webDir: string | null = null) {
     state: () => ({ running: false, lastRunAt: null, lastFiles: 0, lastErrors: 0 }),
     localPricesError: () => null,
   };
-  const app = createApp({ db, config, ingest, startedAt: 1, webDir });
+  const app = createApp({ db, config, ingest, startedAt: 1, webDir, webFiles });
   const req = (path: string, init: RequestInit & { headers?: Record<string, string> } = {}) =>
     app.request(`http://${HOST}${path}`, { ...init, headers: { host: HOST, ...init.headers } });
   return { app, req, calls };
@@ -251,4 +251,27 @@ test("group=agent is accepted by /plan/timeseries only", async () => {
   expect((await req("/api/v1/timeseries?group=agent")).status).toBe(400);
   const span = "fromMs=0&toMs=3600000&stepMs=60000";
   expect((await req(`/api/v1/plan/timeseries?group=agent&${span}`)).status).toBe(200);
+});
+
+function embedded() {
+  const dir = mkdtempSync(join(tmpdir(), "td-emb-"));
+  writeFileSync(join(dir, "i.html"), "<!doctype html>x");
+  writeFileSync(join(dir, "a.js"), "export {};");
+  return setup(null, { "/index.html": join(dir, "i.html"), "/assets/a.js": join(dir, "a.js") });
+}
+
+test("serves embedded index at /", async () => {
+  const r = await embedded().req("/");
+  expect(r.status).toBe(200);
+  expect(await r.text()).toBe("<!doctype html>x");
+});
+
+test("serves an embedded asset by path", async () => {
+  const r = await embedded().req("/assets/a.js");
+  expect(r.status).toBe(200);
+  expect(r.headers.get("content-type")).toContain("javascript");
+});
+
+test("unknown path with embedded files is 404", async () => {
+  expect((await embedded().req("/nope")).status).toBe(404);
 });

@@ -21,6 +21,7 @@
     "setup": "bun server/src/cli.ts setup",
     "update": "bun server/src/cli.ts update",
     "uninstall": "bun server/src/cli.ts uninstall",
+    "build:program": "bun scripts/build-program.ts",
     "build:web": "bun run --cwd web build",
     "dev": "bun run --filter '@td/server' --filter '@td/web' dev",
     "test:e2e": "playwright test"
