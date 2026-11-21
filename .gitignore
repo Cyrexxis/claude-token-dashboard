@@ -6,6 +6,7 @@ docs/superpowers/plans/
 docs/superpowers/specs/
 web/dist/
 plugin/.claude-plugin/types/
+plugin/tsconfig.json
 test-results/
 playwright-report/
 dist/

@@ -8,6 +8,7 @@ import {
   send,
   writeQueue,
 } from "./client";
+import { installCommand, isOlder, pluginVersion } from "./install";
 
 type $ = EngineInterface;
 const COMMAND = "token-dashboard";
@@ -18,6 +19,7 @@ const END_WAIT_MS = 1_500;
 // changed by setup is picked up on the next call.
 let conn: Connection | null = null;
 let toasted = false;
+let updateToasted = false;
 // Queue writes run one at a time so a flush and an enqueue never overwrite each other.
 let chain: Promise<unknown> = Promise.resolve();
 const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -30,25 +32,52 @@ async function connection($: $): Promise<Connection | null> {
   conn ??= await readConnection($);
   if (!conn && !toasted) {
     toasted = true;
-    $.ui.toast("Token Dashboard: no server.json found; start the server (bun run serve)");
+    $.ui.toast("Token Dashboard: no server.json found; run /token-dashboard setup");
   }
   return conn;
 }
 
-const healthy = async ($: $, c: Connection) => (await send($, c, "/api/health")) !== null;
+const health = ($: $, c: Connection) => send($, c, "/api/health");
 
 /** Health check; when it fails and setup recorded a start command, run it and wait for health. */
 async function connect($: $): Promise<void> {
   const c = await connection($);
   if (!c) return;
-  if (!(await healthy($, c))) {
+  let h = await health($, c);
+  if (h === null) {
     conn = null;
     if (c.start?.length) {
       await $.process.run(c.start).catch(() => {});
-      for (let i = 0; i < START_RETRIES && !(await healthy($, c)); i++) await $.clock.sleep(1_000);
+      for (let i = 0; i < START_RETRIES; i++) {
+        h = await health($, c);
+        if (h !== null) break;
+        await $.clock.sleep(1_000);
+      }
     }
   }
+  if (h !== null) await offerUpdate($, h).catch(() => {});
   await flush($, c);
+}
+
+/** A server older than this mod: say once per load that the update is ready (not on Windows: no installer there). */
+async function offerUpdate($: $, healthBody: string): Promise<void> {
+  if (updateToasted || (await $.env.get("OS")) === "Windows_NT") return;
+  const running = parse(healthBody)?.version;
+  const mine = await pluginVersion($);
+  if (typeof running !== "string" || !isOlder(running, mine)) return;
+  const installed = `${await $.env.get("HOME")}/.local/share/token-dashboard/bin/token-dashboard`;
+  // A checkout install updates with git pull + bun run update, not this command.
+  const r = await $.process.run(["test", "-x", installed]).catch(() => null);
+  if (r?.exitCode !== 0) return;
+  updateToasted = true;
+  $.ui.toast(`Token Dashboard v${mine} is ready: run /token-dashboard update`);
+}
+
+/** The running server's version, null when unreachable or not saying. */
+async function serverVersion($: $): Promise<string | null> {
+  const c = await readConnection($);
+  const v = c && parse(await health($, c))?.version;
+  return typeof v === "string" ? v : null;
 }
 
 function flush($: $, c: Connection): Promise<void> {
@@ -87,12 +116,12 @@ async function statusText($: $): Promise<string> {
   const c = await readConnection($);
   const queued = (await readQueue($)).length;
   const lines = [`Connection file: ${path ?? "unknown"}`];
-  if (!c) return [...lines, "Not found: start the server with: bun run serve"].join("\n");
+  if (!c) return [...lines, "Not found: run /token-dashboard setup"].join("\n");
   const health = await send($, c, "/api/health");
   if (health === null)
     return [
       ...lines,
-      `Server ${c.url} not reachable (start it with: bun run serve)`,
+      `Server ${c.url} not reachable (run /token-dashboard setup)`,
       `Queued ingest triggers: ${queued}`,
     ].join("\n");
   const h = parse(health) as { version?: string; protocol?: number } | null;
@@ -123,7 +152,7 @@ async function statusText($: $): Promise<string> {
 /** Opens the dashboard: wslview, then cmd.exe in WSL; xdg-open on Linux; cmd on Windows. */
 async function openText($: $): Promise<string> {
   const c = await readConnection($);
-  if (!c) return "No server.json found; start the server with: bun run serve";
+  if (!c) return "No server.json found; run /token-dashboard setup";
   const tries =
     (await $.env.get("OS")) === "Windows_NT"
       ? [["cmd", "/c", "start", "", c.url]]
@@ -143,8 +172,8 @@ async function openText($: $): Promise<string> {
 function registerCommand($: $) {
   return $.command.register({
     name: COMMAND,
-    description: "Token Dashboard: status | open",
-    argumentHint: "status|open",
+    description: "Token Dashboard: setup | update | status | open | uninstall",
+    argumentHint: "setup|update|status|open|uninstall",
   });
 }
 
@@ -198,6 +227,8 @@ export const register: Register = (on) => {
     const arg = e.args.trim();
     if (arg === "status") return { text: await statusText($) };
     if (arg === "open") return { text: await openText($) };
-    return { text: "Usage: /token-dashboard status | open" };
+    if (arg === "setup" || arg === "update" || arg === "uninstall")
+      return { text: await installCommand($, arg, await serverVersion($)) };
+    return { text: "Usage: /token-dashboard setup | update | status | open | uninstall" };
   });
 };
