@@ -321,7 +321,7 @@ Rules:
 | `/token-dashboard open` | Open the dashboard URL in the default browser: `wslview` or `cmd.exe /c start` in WSL (`xdg-open` is often missing there), `xdg-open` on Linux, `cmd /c start` on Windows. The link is also printed as a fallback. |
 | `/token-dashboard uninstall` | Remove service and program; keep the database unless the user explicitly asks to delete it. |
 
-**Phase 4 (local):** until releases exist, `setup` / `update` / `uninstall` are server CLI commands run from the checkout (`bun run setup|update|uninstall`, WSL/Linux only). `setup` asks which connection files to write (WSL, Windows, both), builds the web UI, writes a systemd user unit running `<bun> <repo>/server/src/cli.ts serve` (copying `TD_PORT`, `TD_CONFIG`, `TD_DATA_DIR`, `CLAUDE_CONFIG_DIR` from the shell into it), starts it and waits for health; a busy port is an error (no fallback yet). `update` = `bun install` + web build + restart. `uninstall` removes the unit and the connection files, keeping the database and config. The mod commands, GitHub downloads, Windows-server mode and Task Scheduler are deferred to the release part of phase 4.
+**Phase 4 (Linux/WSL):** `setup` / `update` / `uninstall` run the compiled program (`token-dashboard setup [--connection-files wsl|windows|both]`, `update`, `uninstall`), which the mod downloads from the GitHub Release `v<plugin version>` (base URL replaceable with `TD_RELEASE_URL`, which must end with `/`), verifies with `sha256sum` and runs. The program lives at a fixed path, `~/.local/share/token-dashboard/bin/token-dashboard`, with the previous one kept as `token-dashboard.prev`; a failed update puts it back. `update` runs only when the server is older than the plugin. Windows sessions refuse all three with "Run /token-dashboard <command> in a WSL session." (the command's own name) The checkout commands (`bun run setup|update|uninstall`) still work; checkout `setup` removes an installed program so only one install exists. Both write a systemd user unit, copy `TD_PORT`, `TD_CONFIG`, `TD_DATA_DIR`, `CLAUDE_CONFIG_DIR` from the shell into it, start it and wait for health; a busy port is an error. `uninstall` removes the unit and connection files, keeping the database and config. Windows-server mode and Task Scheduler are not built yet.
 
 Downloads and service management use `$.process.run` / `$.process.spawn` (`curl` on Linux/WSL, `curl.exe` or PowerShell on Windows). Progress is shown via `$.ui.status`. These commands work in Claude Code sessions (CLI, desktop Code tab, IDE); not in chat or Cowork.
 
@@ -418,9 +418,9 @@ All views update live via SSE.
 Bun workspaces tie `server`, `web` and `shared` together. The Vite build output is embedded into the compiled program.
 
 ### Release flow
-1. Bump the version in `plugin/.claude-plugin/plugin.json` and the server; commit; tag `vX.Y.Z`.
-2. `release.yml` builds `token-dashboard-<os>-<arch>[.exe]` and `checksums.txt`, attaches them to the GitHub Release.
-3. Users run `claude plugin update`, then `/token-dashboard update`. If the release is not published yet, the mod says so and asks to retry later.
+1. Bump the version in `plugin/.claude-plugin/plugin.json`, the only place it is kept (the server reads it). Run `bun run test:mod` and `bun run test:e2e` locally; commit; tag `vX.Y.Z`; push the tag.
+2. `release.yml` checks the tag against `plugin.json`, runs lint, typecheck, `bun test` and `check:network`, builds `token-dashboard-linux-x64`, `token-dashboard-linux-arm64` and `checksums.txt` (`<sha256 hex>  <name>` lines), and attaches them to the GitHub Release. The mod and e2e tests do not run in CI.
+3. Users run `claude plugin update token-dashboard`, then `/token-dashboard update`. If the release is not published yet, the mod says so and asks to retry later.
 
 No built files are committed; no npm publishing.
 
@@ -442,7 +442,7 @@ No built files are committed; no npm publishing.
 1. **Core** — scaffolding (Bun workspaces), schema + migrations, transcript parser + ingester with dedup, watchers/polling, price engine with `prices.json`, fixtures and tests. Examine `api-request` lines.
 2. **API + UI** — Hono API, auth, SSE, React dashboard (overview, tokens, cost, sessions, status).
 3. **Mod** — health/start, plan snapshots, ingest triggers, offline queue, `status` and `open` commands; Plan view, Overview plan tile, price and tokens per 1 % (moved up from phase 5). Not built: `POST /sessions`, `/live-usage`, `session.started/ended` events. Windows-side connection file stays in phase 4, so Windows sessions keep polling until then.
-4. **Distribution** — *local part done:* server `setup` / `update` / `uninstall` from the checkout, systemd user unit, WSL + Windows connection files (`connectionFiles`). *Release part open:* release workflow, `setup` / `update` / `uninstall`, systemd and Task Scheduler, connection files, Windows-server mode, WSL keepalive (if needed), retention setting.
+4. **Distribution** — *done:* server `setup` / `update` / `uninstall` from the checkout; release workflow, compiled program with the web UI embedded, mod `setup` / `update` / `uninstall` from GitHub Releases for Linux/WSL, systemd user unit, WSL + Windows connection files. *Open:* Windows-server mode, Task Scheduler, WSL keepalive (if needed), retention offer (`cleanupPeriodDays`), release attestations.
 5. **Extras** — Cowork parser (after verification), chat export import (estimates), optional in-app panel.
 
 ---

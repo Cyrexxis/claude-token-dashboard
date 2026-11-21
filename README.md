@@ -10,63 +10,53 @@ dashboard updates live.
 **Privacy:** everything stays on your machine. The server listens on `127.0.0.1` only and makes
 no outbound network connections (`bun run check:network` enforces this). No telemetry, no CDNs.
 
-> Status: phases 1–3 and the local part of phase 4 are done. There are no prebuilt releases
-> yet, so you run it from a checkout. Linux and WSL are supported; a Windows-side server is not
-> built yet. See [SPEC.md](SPEC.md) §17 for the roadmap.
+> Status: phases 1–3 and the Linux/WSL release part of phase 4 are done. A Windows-side
+> server is not built yet. See [SPEC.md](SPEC.md) §17 for the roadmap.
 
 ---
 
-## Setup
+## Install
 
-### Requirements
-
-- [Bun](https://bun.sh) 1.4 or newer
-- Linux or WSL with systemd user services (`systemctl --user` must work)
-- Claude Code, for the mod and the transcripts it reads
-
-### Install
+In a terminal:
 
 ```sh
-git clone https://github.com/Cyrexxis/claude-token-dashboard.git token-dashboard
-cd token-dashboard
-bun install
-bun run setup
+claude plugin marketplace add Cyrexxis/claude-token-dashboard
+claude plugin install token-dashboard@token-dashboard
 ```
 
-`bun run setup` asks which connection files to write (WSL, Windows, or both), builds the web UI,
-installs a systemd user service called `token-dashboard`, starts it, and waits until it answers.
-It prints the dashboard link, by default **http://127.0.0.1:47811**.
+then, in a Claude Code session:
+
+```
+/token-dashboard setup
+```
+
+`setup` downloads the program for your machine from the GitHub Release that matches the plugin,
+checks its checksum, asks which connection files to write (WSL, Windows, or both), installs a
+systemd user service called `token-dashboard`, starts it, and waits until it answers. It prints
+the dashboard link, by default **http://127.0.0.1:47811**. In WSL, run it from a WSL session; a
+Windows session refuses it.
+
+Requirements: Linux or WSL with systemd user services (`systemctl --user` must work), `curl` and
+`sha256sum`. You do not need Bun.
 
 On first start the server scans every transcript it finds, so the first page load may take a
 moment on a large history.
 
-### Load the mod
-
-The mod gives the Plan view its data and makes the dashboard update after every turn. Without
-it you still get tokens and cost, picked up by the file watcher, but no plan usage.
-
-Either load it for one session:
-
-```sh
-claude --plugin-dir ./plugin
-```
-
-or install it from the repo, which works as a plugin marketplace:
-
-```sh
-claude plugin marketplace add /path/to/token-dashboard
-claude plugin install token-dashboard@token-dashboard
-```
-
-On session start the mod checks that the server is up and starts the service if it is not.
-
 ### Update and uninstall
 
 ```sh
-git pull
-bun run update      # bun install + web build + service restart
-bun run uninstall   # removes the service and connection files, keeps the database and config
+claude plugin update token-dashboard
 ```
+
+then `/token-dashboard update` in a session. It does nothing if the server is already as new as
+the plugin. If the new program fails to start, the previous one is put back.
+
+`/token-dashboard uninstall` removes the service, the program and the connection files. It keeps
+the database and config.
+
+The mod gives the Plan view its data and makes the dashboard update after every turn. Without it
+you still get tokens and cost, picked up by the file watcher, but no plan usage. On session start
+it checks that the server is up and starts the service if it is not.
 
 ---
 
@@ -89,9 +79,9 @@ Tips:
   "tokens per 1 %" reads low on days you also chat.
 - `/token-dashboard status` in Claude Code shows the service state, connection and sources.
 
-### Command line
+### Command line (checkout / development)
 
-Run these from the checkout:
+These commands are for a checkout (see Development); the plugin install does not need them:
 
 | Command | Does |
 |---|---|
@@ -108,6 +98,7 @@ Run these from the checkout:
 | Config | `~/.config/token-dashboard/config.json` (optional) |
 | Local price overrides | `~/.config/token-dashboard/prices.local.json` |
 | Connection file (read by the mod) | `~/.config/token-dashboard/server.json` |
+| Installed program (plugin install; the previous one is kept as `.prev`) | `~/.local/share/token-dashboard/bin/token-dashboard` |
 | Logs | `journalctl --user -u token-dashboard` |
 
 `config.json` keys, all optional:
@@ -127,7 +118,8 @@ Run these from the checkout:
 - `connectionFiles` is written by `setup`; leave it alone.
 
 Environment variables: `TD_PORT` (default 47811), `TD_DATA_DIR`, `TD_CONFIG`, and
-`CLAUDE_CONFIG_DIR`. `setup` copies them into the service, so set them before running it.
+`CLAUDE_CONFIG_DIR`. For the plugin path, set them before starting Claude Code (the mod passes its environment to
+the program); `setup` copies them into the service and `update` keeps the service's existing values.
 
 Your history is kept even after Claude Code deletes old transcripts. To keep more transcripts
 on disk in the first place, raise `cleanupPeriodDays` in Claude Code's settings.
@@ -135,10 +127,10 @@ on disk in the first place, raise `cleanupPeriodDays` in Claude Code's settings.
 ### Troubleshooting
 
 - **Dashboard does not load:** `systemctl --user status token-dashboard`, then the logs above.
-- **Port 47811 is busy:** set `TD_PORT` and run `bun run setup` again.
-- **No plan data:** the mod is not loaded in your Claude Code session (see *Load the mod*).
+- **Port 47811 is busy:** set `TD_PORT` and run `/token-dashboard setup` again.
+- **No plan data:** the mod is not loaded in your Claude Code session (see *Install*).
 - **"unpriced requests":** a model is missing from `prices/prices.json`; add it to
-  `prices.local.json` and run `bun run reprice`.
+  `prices.local.json`; prices reload automatically (`bun run reprice` is the checkout command).
 
 ---
 
@@ -155,6 +147,20 @@ prices/   prices.json shipped with the program
 fixtures/ Sample transcripts for tests
 SPEC.md   The specification: architecture, data rules, decisions, roadmap
 ```
+
+### Run from a checkout
+
+```sh
+git clone https://github.com/Cyrexxis/claude-token-dashboard.git token-dashboard
+cd token-dashboard
+bun install
+bun run setup       # also: bun run update, bun run uninstall
+claude --plugin-dir ./plugin
+```
+
+Needs [Bun](https://bun.sh) 1.4 or newer. `bun run setup` builds the web UI and installs a
+service that runs the checkout. It removes a program installed by `/token-dashboard setup`
+(`~/.local/share/token-dashboard/bin/`), so the two installs never compete.
 
 ### Run it locally
 
@@ -181,6 +187,16 @@ bun test
 bun run check:network   # fails if server code makes network calls
 bun run test:mod        # mod tests, needs the claude CLI
 ```
+
+### Releasing
+
+1. Bump `version` in `plugin/.claude-plugin/plugin.json`. It is the only version.
+2. Run `bun run test:mod` and `bun run test:e2e`.
+3. Commit, tag `v<version>`, and push the tag.
+
+`.github/workflows/release.yml` checks that the tag matches `plugin.json`, runs the checks,
+builds `token-dashboard-linux-x64`, `token-dashboard-linux-arm64` and `checksums.txt`, and attaches
+them to a GitHub Release.
 
 ### Conventions
 
