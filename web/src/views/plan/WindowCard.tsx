@@ -7,9 +7,9 @@ export function WindowCard({ w }: { w: PlanWindow }) {
   return (
     <div className="tile">
       <div className="label">{kindLabel(w.kind)} window</div>
-      <div className="value">{pct(w.peakPercent)}</div>
+      <div className="value">{pct(w.percent)}</div>
       <div className="bar" role="presentation">
-        <span style={{ width: `${Math.min(w.peakPercent, 100)}%` }} />
+        <span style={{ width: `${Math.min(w.percent, 100)}%` }} />
       </div>
       <div className="sub">
         resets in {fmtDuration(Math.max(w.resetsAt - now, 0))} ·{" "}

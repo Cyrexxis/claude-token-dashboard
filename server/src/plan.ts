@@ -8,6 +8,7 @@ import {
   type SessionRow,
 } from "@td/shared";
 import { BadRequest, dayBoundsMs, type Range, toDate } from "./api/queries";
+import { getSettings } from "./settings";
 
 const ORG = "default"; // single account (user decision); the column keeps room for more
 const MINUTE = 60_000;
@@ -88,7 +89,7 @@ const HOUR = 3_600_000;
 const WINDOW_MS: Record<string, number> = { five_hour: 5 * HOUR, seven_day: 7 * 24 * HOUR };
 const LOW_SIGNAL_PERCENT = 5;
 
-/** Windows are (kind, resets_at) groups of readings; usage is summed from requests at read time, so repricing needs no rebuild. */
+/** Windows are built from readings (`splitWindows`); usage is summed from requests at read time, so repricing needs no rebuild. */
 /** [first local midnight, last ms of the last local day] around [start, end): an active day counts in full. */
 function wholeDays(start: number, end: number): [number, number] {
   const from = new Date(start);
@@ -135,6 +136,84 @@ export function otherUse(
   return { certain, estimated: rate === null ? null : estimated };
 }
 
+type Snap = Point & { resetsAt: number | null };
+type Span = { resetsAt: number; startMs: number | null; endMs: number; points: Snap[] };
+
+/**
+ * One kind's readings (in ts order) without the ones that aren't the plan's real state:
+ * - a glitch: readings with another reset time between two readings of one window (Anthropic, seen
+ *   right after a plan upgrade);
+ * - a stale reading: a fall the next reading undoes (a concurrent session reporting old data).
+ * shortcut: two stale readings in a row stay; look ahead further if that shows up.
+ */
+export function dropNoise<T extends Pick<Snap, "percent" | "resetsAt">>(snaps: T[]): T[] {
+  const blocks: { resetsAt: number | null; points: T[] }[] = [];
+  for (const s of snaps) {
+    const b = blocks.at(-1);
+    if (b && (s.resetsAt === null || b.resetsAt === null || s.resetsAt === b.resetsAt)) {
+      b.points.push(s);
+      b.resetsAt ??= s.resetsAt;
+      continue;
+    }
+    const before = blocks.at(-2);
+    if (before && s.resetsAt === before.resetsAt) {
+      blocks.pop(); // the glitch
+      before.points.push(s);
+    } else blocks.push({ resetsAt: s.resetsAt, points: [s] });
+  }
+  return blocks.flatMap(({ points }) =>
+    points.filter((p, i) => {
+      const prev = points[i - 1];
+      const next = points[i + 1];
+      return !(prev && next && p.percent < prev.percent && next.percent >= prev.percent);
+    }),
+  );
+}
+
+/**
+ * One kind's readings (in ts order, noise dropped) as windows that never overlap.
+ * - A new reset time starts a new window.
+ * - A fall to `resetPercent` or below is a limit reset and starts a new window; a smaller fall is a
+ *   rescale (a plan change) and stays in the window.
+ * - Readings without a reset time join the window around them; a run of only those is no window.
+ * A window ends where the next one starts, at most at its reset time.
+ */
+export function splitWindows(snaps: Snap[], len: number | undefined, resetPercent: number): Span[] {
+  const runs: { resetsAt: number | null; points: Snap[] }[] = [];
+  for (const s of snaps) {
+    const run = runs.at(-1);
+    const last = run?.points.at(-1);
+    const moved = s.resetsAt !== null && run?.resetsAt != null && s.resetsAt !== run.resetsAt;
+    // A reset run takes its reset time from its own readings: none yet means no window yet.
+    if (!run || !last || moved || (s.percent <= resetPercent && s.percent < last.percent))
+      runs.push({ resetsAt: s.resetsAt, points: [s] });
+    else {
+      run.points.push(s);
+      run.resetsAt ??= s.resetsAt;
+    }
+  }
+  // Where each run starts: its reset time minus the length, but not before the previous run was last
+  // seen nor after its own first reading (reset times are rounded to the minute).
+  const starts = runs.map((run, i) => {
+    const first = (run.points[0] as Snap).ts;
+    const natural = run.resetsAt !== null && len !== undefined ? run.resetsAt - len : first;
+    const prev = runs[i - 1]?.points.at(-1);
+    return Math.min(prev ? Math.max(natural, prev.seen + 1) : natural, first);
+  });
+  return runs.flatMap((run, i) =>
+    run.resetsAt === null
+      ? []
+      : [
+          {
+            resetsAt: run.resetsAt,
+            startMs: len === undefined ? null : (starts[i] as number),
+            endMs: Math.min(run.resetsAt, starts[i + 1] ?? Infinity),
+            points: run.points,
+          },
+        ],
+  );
+}
+
 export function getPlanWindows(
   db: Database,
   r: Range,
@@ -143,21 +222,29 @@ export function getPlanWindows(
   other?: { estimate: boolean },
 ): PlanWindows {
   const { fromMs, toMs } = dayBoundsMs(r);
-  // In range, or still running (a current window ignores the range). Keeps "All time" the only unbounded case.
-  const groups = db
-    .query<
-      { kind: string; resets_at: number; peak: number },
-      [string, number, number | null, number | null]
-    >(
-      `SELECT kind, resets_at, MAX(percent_used) peak FROM plan_snapshots
-       WHERE org_id = ?1 AND resets_at IS NOT NULL
-         AND (resets_at > ?2 OR ((?3 IS NULL OR resets_at >= ?3) AND (?4 IS NULL OR resets_at < ?4)))
-       GROUP BY kind, resets_at ORDER BY resets_at DESC`,
+  const { resetPercent } = getSettings(db);
+  // A window in range started at most a week before it, and so did a window it cut short.
+  const snaps = db
+    .query<Snap & { kind: string }, [string, number | null]>(
+      `SELECT kind, ts, COALESCE(seen_ts, ts) seen, percent_used percent, resets_at resetsAt
+       FROM plan_snapshots WHERE org_id = ?1 AND (?2 IS NULL OR COALESCE(seen_ts, ts) >= ?2)
+       ORDER BY kind, ts, id`,
     )
-    .all(ORG, now, fromMs, toMs);
-  const peakTs = db.query<{ ts: number }, [string, string, number, number]>(
-    "SELECT MAX(ts) ts FROM plan_snapshots WHERE org_id = ? AND kind = ? AND resets_at = ? AND percent_used = ?",
-  );
+    .all(ORG, fromMs === null ? null : fromMs - 8 * 24 * HOUR);
+  // In range, or still running (a current window ignores the range). Keeps "All time" the only unbounded case.
+  const spans = [...Map.groupBy(snaps, (s) => s.kind)]
+    .flatMap(([kind, list]) =>
+      splitWindows(dropNoise(list), WINDOW_MS[kind], resetPercent).map((s) => ({
+        ...s,
+        kind,
+        current: s.endMs > now,
+      })),
+    )
+    .filter(
+      (s) =>
+        s.current || ((fromMs === null || s.endMs >= fromMs) && (toMs === null || s.endMs < toMs)),
+    )
+    .sort((a, b) => b.endMs - a.endMs);
   const usage = db.query<
     { tokens: number; cost: number; first: number | null; last: number | null },
     [number, number]
@@ -170,38 +257,28 @@ export function getPlanWindows(
     `SELECT DISTINCT date(ts / 1000, 'unixepoch', 'localtime') day FROM requests
      WHERE ts >= ? AND ts <= ? ORDER BY day`,
   );
-  const points = db.query<Point, [string, string, number]>(
-    `SELECT ts, COALESCE(seen_ts, ts) seen, percent_used percent FROM plan_snapshots
-     WHERE org_id = ? AND kind = ? AND resets_at = ? ORDER BY ts`,
-  );
   const reqs = db.query<{ ts: number; cost: number }, [number, number]>(
     "SELECT ts, COALESCE(cost_usd, 0) cost FROM requests WHERE ts >= ? AND ts <= ? ORDER BY ts",
   );
   const current: PlanWindow[] = [];
   const past: PlanWindow[] = [];
-  const seenKinds = new Set<string>();
-  for (const g of groups) {
-    const isCurrent = !seenKinds.has(g.kind) && g.resets_at > now;
-    seenKinds.add(g.kind);
-    if (
-      !isCurrent &&
-      ((fromMs !== null && g.resets_at < fromMs) || (toMs !== null && g.resets_at >= toMs))
-    )
-      continue;
-    const len = WINDOW_MS[g.kind];
-    const startMs = len === undefined ? null : g.resets_at - len;
-    const pTs = peakTs.get(ORG, g.kind, g.resets_at, g.peak)?.ts ?? 0;
-    const end = Math.min(g.resets_at, now) - 1;
+  for (const g of spans) {
+    const isCurrent = g.current;
+    const { startMs } = g;
+    const peak = Math.max(...g.points.map((p) => p.percent));
+    const pTs = g.points.findLast((p) => p.percent === peak)?.ts ?? 0;
+    const end = Math.min(g.endMs, now) - 1;
     const all = startMs === null ? null : usage.get(startMs, end);
     const atPeak = startMs === null ? null : usage.get(startMs, pTs);
     const per = (v: number | undefined) =>
-      atPeak && g.peak > 0 && v !== undefined ? v / g.peak : null;
+      atPeak && peak > 0 && v !== undefined ? v / peak : null;
     (isCurrent ? current : past).push({
       kind: g.kind,
       startMs,
-      resetsAt: g.resets_at,
+      resetsAt: g.endMs,
       current: isCurrent,
-      peakPercent: g.peak,
+      peakPercent: peak,
+      percent: (g.points.at(-1) as Snap).percent,
       peakTs: pTs,
       tokens: all?.tokens ?? 0,
       costUsd: all?.cost ?? 0,
@@ -209,12 +286,12 @@ export function getPlanWindows(
       costAtPeak: atPeak?.cost ?? 0,
       usdPerPercent: per(atPeak?.cost),
       tokensPerPercent: per(atPeak?.tokens),
-      lowSignal: g.peak < LOW_SIGNAL_PERCENT,
+      lowSignal: peak < LOW_SIGNAL_PERCENT,
       ...(other && startMs !== null
         ? {
             other: otherUse(
-              points.all(ORG, g.kind, g.resets_at),
-              reqs.all(startMs - OTHER_MARGIN_MS, Math.min(g.resets_at, now)),
+              g.points,
+              reqs.all(startMs - OTHER_MARGIN_MS, Math.min(g.endMs, now)),
               startMs,
               other.estimate ? per(atPeak?.cost) : null,
             ),
@@ -224,11 +301,11 @@ export function getPlanWindows(
         startMs === null
           ? []
           : g.kind === "seven_day"
-            ? activeDays.all(...wholeDays(startMs, g.resets_at)).map(({ day }) => {
+            ? activeDays.all(...wholeDays(startMs, g.endMs)).map(({ day }) => {
                 const d = toDate(day);
                 const from = d.getTime();
                 d.setDate(d.getDate() + 1);
-                return [Math.max(from, startMs), Math.min(d.getTime(), g.resets_at)];
+                return [Math.max(from, startMs), Math.min(d.getTime(), g.endMs)];
               })
             : all?.first != null && all.last != null
               ? [[all.first, all.last]]
@@ -301,14 +378,25 @@ export function withPlanPercent(db: Database, rows: SessionRow[], now: number): 
 
 export function getPlanSnapshots(db: Database, r: Range): PlanSnapshots {
   const { fromMs, toMs } = dayBoundsMs(r);
-  const points = db
-    .query<PlanSnapshotPoint, [string, number | null, number | null]>(
+  const rows = db
+    .query<Snap & { kind: string }, [string, number | null, number | null]>(
       // A row from before the range still counts when it was confirmed inside it.
-      `SELECT ts, COALESCE(seen_ts, ts) seenTs, kind, percent_used percentUsed, resets_at resetsAt
+      `SELECT ts, COALESCE(seen_ts, ts) seen, kind, percent_used percent, resets_at resetsAt
        FROM plan_snapshots
        WHERE org_id = ?1 AND (?2 IS NULL OR COALESCE(seen_ts, ts) >= ?2) AND (?3 IS NULL OR ts < ?3)
        ORDER BY ts, id`,
     )
     .all(ORG, fromMs, toMs);
+  // The same readings the windows use. shortcut: noise at the range's edges stays; widen the query if that shows.
+  const points = [...Map.groupBy(rows, (p) => p.kind).values()]
+    .flatMap(dropNoise)
+    .sort((a, b) => a.ts - b.ts)
+    .map(({ ts, seen, kind, percent, resetsAt }) => ({
+      ts,
+      seenTs: seen,
+      kind,
+      percentUsed: percent,
+      resetsAt,
+    }));
   return { points };
 }

@@ -3,6 +3,7 @@ import type { Status as StatusData } from "@td/shared";
 import { api } from "../../api";
 import { Info } from "./Info";
 import { OtherProducts } from "./OtherProducts";
+import { PlanResets } from "./PlanResets";
 import { PriceEditor } from "./PriceEditor";
 import { Sources } from "./Sources";
 
@@ -18,6 +19,7 @@ export function Status() {
       <Info status={status.data} />
       <Sources status={status.data} />
       <OtherProducts />
+      <PlanResets />
       <PriceEditor />
     </>
   );

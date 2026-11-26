@@ -3,6 +3,7 @@ import type { SessionRow } from "@td/shared";
 import { BadRequest } from "../src/api/queries";
 import { openDatabase } from "../src/db/database";
 import {
+  dropNoise,
   estimatePercent,
   getPlanSnapshots,
   getPlanWindows,
@@ -10,6 +11,7 @@ import {
   recordSnapshots,
   withPlanPercent,
 } from "../src/plan";
+import { saveSettings } from "../src/settings";
 import { all, insertRequest } from "./db-helpers";
 
 const NOW = Date.parse("2026-10-15T12:00:00Z");
@@ -159,6 +161,7 @@ test("window math", () => {
       resetsAt: at(RESET),
       current: true,
       peakPercent: 40,
+      percent: 40,
       peakTs: at("2026-10-15T14:00:00Z"),
       tokens: 400,
       costUsd: 4,
@@ -214,6 +217,85 @@ test("only the latest window per kind is current; older ones are past", () => {
   const r = getPlanWindows(db, NONE, at("2026-10-15T18:30:00Z"));
   expect(r.current.map((w) => w.resetsAt)).toEqual([at("2026-10-15T22:00:00Z")]);
   expect(r.past.map((w) => w.resetsAt)).toEqual([at(RESET)]);
+});
+
+test("a small fall is a rescale (plan change): same window, percent is the latest reading", () => {
+  const { db, read } = windowFixture();
+  read("2026-10-15T15:30:00Z", 20);
+  const { current, past } = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  expect(past).toEqual([]);
+  expect(current).toMatchObject([{ resetsAt: at(RESET), peakPercent: 40, percent: 20 }]);
+});
+
+test("a fall to the reset threshold is a limit reset: a new window after the last reading", () => {
+  const { db, read } = windowFixture();
+  read("2026-10-15T15:30:00Z", 3);
+  const r = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  const cut = at("2026-10-15T14:00:00Z") + 1;
+  expect(r.current).toMatchObject([
+    { startMs: cut, resetsAt: at(RESET), peakPercent: 3, percent: 3, costUsd: 2 },
+  ]);
+  expect(r.past).toMatchObject([
+    { startMs: at("2026-10-15T12:00:00Z"), resetsAt: cut, peakPercent: 40, costUsd: 2 },
+  ]);
+  saveSettings(db, { otherProducts: false, otherEstimate: false, resetPercent: 2 });
+  expect(getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z")).past).toEqual([]);
+});
+
+test("a new reset time before the old one ends the old window where the new one starts", () => {
+  const { db, read } = windowFixture();
+  read("2026-10-15T15:30:00Z", 0, "five_hour", "2026-10-15T20:30:00Z");
+  const r = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  const reset = at("2026-10-15T15:30:00Z");
+  expect(r.current).toMatchObject([{ startMs: reset, resetsAt: at("2026-10-15T20:30:00Z") }]);
+  expect(r.past).toMatchObject([{ resetsAt: reset, peakPercent: 40, costUsd: 4 }]);
+});
+
+test("a reset without a reset time ends the window; the next reset time starts the next one", () => {
+  const { db, read } = windowFixture();
+  recordSnapshots(
+    db,
+    { windows: [{ kind: "five_hour", percentUsed: 0 }] },
+    at("2026-10-15T15:30:00Z"),
+  );
+  const gap = getPlanWindows(db, NONE, at("2026-10-15T15:35:00Z"));
+  expect(gap.current).toEqual([]);
+  const cut = at("2026-10-15T15:30:00Z");
+  expect(gap.past).toMatchObject([{ resetsAt: cut, peakPercent: 40 }]);
+  read("2026-10-15T15:40:00Z", 5, "five_hour", "2026-10-15T20:40:00Z");
+  const r = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  expect(r.current).toMatchObject([{ startMs: cut, peakPercent: 5 }]);
+  expect(r.past).toMatchObject([{ resetsAt: cut }]);
+});
+
+test("readings with another reset time inside a window are a glitch, not a window", () => {
+  const { db, read } = windowFixture();
+  read("2026-10-15T14:10:00Z", 1, "five_hour", "2026-10-15T19:10:00Z");
+  read("2026-10-15T14:20:00Z", 8);
+  const { current, past } = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  expect(past).toEqual([]);
+  expect(current).toMatchObject([{ resetsAt: at(RESET), peakPercent: 40, percent: 8 }]);
+});
+
+test("a fall the next reading undoes is a stale reading from another session: dropped", () => {
+  const { db, read } = windowFixture();
+  read("2026-10-15T14:10:00Z", 2); // a session that last saw the window at its start
+  read("2026-10-15T14:20:00Z", 41);
+  const { current, past } = getPlanWindows(db, NONE, at("2026-10-15T16:00:00Z"));
+  expect(past).toEqual([]);
+  expect(current).toMatchObject([{ startMs: at("2026-10-15T12:00:00Z"), peakPercent: 41 }]);
+  expect(getPlanSnapshots(db, NONE).points.map((p) => p.percentUsed)).toEqual([20, 40, 41]);
+});
+
+test("dropNoise: glitch blocks and undone falls go; real falls, resets and rescales stay", () => {
+  const r = (percent: number, resetsAt: number | null = 1) => ({ percent, resetsAt });
+  const kept = (xs: ReturnType<typeof r>[]) => dropNoise(xs).map((x) => x.percent);
+  expect(kept([r(40), r(1, 2), r(3, 2), r(41)])).toEqual([40, 41]); // glitch
+  expect(kept([r(40), r(38), r(40)])).toEqual([40, 40]); // stale
+  expect(kept([r(40), r(0), r(1)])).toEqual([40, 0, 1]); // reset
+  expect(kept([r(40), r(20), r(21)])).toEqual([40, 20, 21]); // rescale
+  expect(kept([r(40), r(3)])).toEqual([40, 3]); // latest: can't tell yet
+  expect(kept([r(40, 1), r(2, 2), r(41, 2)])).toEqual([40, 2, 41]); // a new window, not a fall
 });
 
 test("spend_limit has no start and no per-1 % figures", () => {

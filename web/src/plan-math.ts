@@ -15,12 +15,19 @@ export const findWindow = (all: PlanWindow[], id: WindowId | null): PlanWindow |
  */
 export function mergeReadings(
   points: PlanSnapshotPoint[],
-  current: Pick<PlanWindow, "kind" | "resetsAt">[],
+  current: Pick<PlanWindow, "kind" | "startMs" | "resetsAt">[],
   start: number,
   end: number,
 ): Record<string, number>[] {
-  const resets = new Map(current.map((w) => [w.kind, w.resetsAt]));
-  const own = points.filter((p) => resets.get(p.kind) === p.resetsAt).sort((a, b) => a.ts - b.ts);
+  const spans = new Map(current.map((w) => [w.kind, w]));
+  // A window's readings are those taken inside it: a limit reset keeps the reset time, but
+  // windows never overlap (the server already dropped glitches and stale readings).
+  const own = points
+    .filter((p) => {
+      const w = spans.get(p.kind);
+      return w !== undefined && p.ts >= (w.startMs ?? -Infinity) && p.ts < w.resetsAt;
+    })
+    .sort((a, b) => a.ts - b.ts);
   const times = [
     ...new Set([
       start,

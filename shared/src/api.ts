@@ -204,6 +204,8 @@ export type PlanWindow = {
   resetsAt: number;
   current: boolean;
   peakPercent: number;
+  /** The latest reading; below the peak after a limit reset or a plan upgrade. */
+  percent: number;
   /** ts of the stored reading holding the peak (latest such). */
   peakTs: number;
   /** [start, min(resetsAt, now)) */
@@ -222,7 +224,12 @@ export type PlanWindow = {
   activity: [number, number][];
 };
 export type PlanWindows = { current: PlanWindow[]; past: PlanWindow[] };
-export type Settings = { otherProducts: boolean; otherEstimate: boolean };
+export type Settings = {
+  otherProducts: boolean;
+  otherEstimate: boolean;
+  /** Plan % at or below which a fall starts a new window (a limit reset); a smaller fall is a rescale. */
+  resetPercent: number;
+};
 /** `server.json`: how the mod finds the server (SPEC §11.3). */
 export type ConnectionFile = {
   url: string;

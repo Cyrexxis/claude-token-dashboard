@@ -21,8 +21,8 @@ const pt = (ts: number, kind: string, percentUsed: number, resetsAt: number, see
 test("mergeReadings: shared rows, values carried forward, other windows ignored, ends at last reading within the window", () => {
   const start = 10 * H;
   const cur = [
-    { kind: "five_hour", resetsAt: 15 * H },
-    { kind: "seven_day", resetsAt: 100 * H },
+    { kind: "five_hour", startMs: 10 * H, resetsAt: 15 * H },
+    { kind: "seven_day", startMs: -68 * H, resetsAt: 100 * H },
   ];
   const rows = mergeReadings(
     [
@@ -47,8 +47,8 @@ test("mergeReadings: shared rows, values carried forward, other windows ignored,
 
 test("mergeReadings: a value confirmed unchanged draws on to its last confirmation, capped at the end", () => {
   const cur = [
-    { kind: "five_hour", resetsAt: 15 * H },
-    { kind: "seven_day", resetsAt: 100 * H },
+    { kind: "five_hour", startMs: 10 * H, resetsAt: 15 * H },
+    { kind: "seven_day", startMs: -68 * H, resetsAt: 100 * H },
   ];
   const rows = mergeReadings(
     [
@@ -66,6 +66,24 @@ test("mergeReadings: a value confirmed unchanged draws on to its last confirmati
     { ts: 12 * H, seven_day: 5, five_hour: 10 },
     { ts: 13 * H, seven_day: 5, five_hour: 20 },
     { ts: 14 * H, seven_day: 5, five_hour: 20 },
+  ]);
+});
+
+test("mergeReadings: readings by time, so a limit reset keeping the reset time drops the old ones", () => {
+  const rows = mergeReadings(
+    [
+      pt(11 * H, "five_hour", 80, 15 * H), // before the reset that started this window
+      pt(13 * H, "five_hour", 5, 15 * H),
+      pt(14 * H, "five_hour", 6, 15 * H),
+    ],
+    [{ kind: "five_hour", startMs: 12 * H, resetsAt: 15 * H }],
+    12 * H,
+    15 * H,
+  );
+  expect(rows).toEqual([
+    { ts: 12 * H },
+    { ts: 13 * H, five_hour: 5 },
+    { ts: 14 * H, five_hour: 6 },
   ]);
 });
 
